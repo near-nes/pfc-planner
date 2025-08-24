@@ -139,7 +139,7 @@ if __name__ == "__main__":
         model.parameters(), lr=0.001
     )  # Adjust learning rate based on UPDATE_STEPS
 
-    num_epochs = 500  # More epochs might be needed for sequence regression
+    num_epochs = 700  # More epochs might be needed for sequence regression
     print("\nStarting online training...")
     for epoch in range(num_epochs):
         model.train()

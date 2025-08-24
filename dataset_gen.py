@@ -1,69 +1,45 @@
-import numpy as np
+import datetime
+import os
+import sys
+import time
+from pathlib import Path
+
 import pybullet
-import structlog
-from arm_1dof.bullet_arm_1dof import BulletArm1Dof
-from arm_1dof.robot_arm_1dof import RobotArm1Dof
 
-_log = structlog.get_logger("dataset_gen")
+sys.path.insert(0, "/sim/controller/complete_control")
+os.environ["RUNS_PATH"] = str((Path(__file__).parent / "runs").absolute())
 
-
-class Robot:
-    def __init__(self):
-        bullet_world = BulletArm1Dof()
-        bullet_world.InitPybullet()
-
-        self.bullet_robot = bullet_world.LoadRobot()
-        bullet_world.LoadPlane()
-
-    def _set_EE_pos(self, position_rad) -> np.ndarray:
-        """Sets joint to position_rad and returns EE (cartesian) position"""
-        pybullet.resetJointState(
-            self.bullet_robot._body_id,
-            RobotArm1Dof.ELBOW_JOINT_ID,
-            position_rad,
-        )
-        return
-
-    def _capture_state_and_save(self, image_path) -> None:
-        from PIL import Image
-
-        _log.debug("setting up camera...")
-
-        camera_target_position = [0.3, 0.3, 1.5]
-        camera_position = [0, -1, 1.7]
-        up_vector = [0, 0, 1]
-        width = 1024
-        height = 768
-        fov = 60
-        aspect = width / height
-        near = 0.1
-        far = 100
-        projection_matrix = pybullet.computeProjectionMatrixFOV(fov, aspect, near, far)
-        view_matrix = pybullet.computeViewMatrix(
-            camera_position, camera_target_position, up_vector
-        )
-        _log.debug("getting image...")
-        img_arr = pybullet.getCameraImage(
-            width,
-            height,
-            viewMatrix=view_matrix,
-            projectionMatrix=projection_matrix,
-            renderer=pybullet.ER_BULLET_HARDWARE_OPENGL,
-        )
-
-        _log.debug("saving image...")
-        rgb_buffer = np.array(img_arr[2])
-        rgb = rgb_buffer[:, :, :3]  # drop alpha
-        Image.fromarray(rgb.astype(np.uint8)).save(image_path)
-        _log.info(f"saved input image at {str(image_path)}")
-
-
-def generate_image(joint, ball, image_path="./test.bmp"):
-    robot = Robot()
-    robot._set_EE_pos(joint)
-    robot._capture_state_and_save(image_path)
-
+from complete_control.config.core_models import (
+    OracleData,
+    SimulationParams,
+    TargetColor,
+)
+from complete_control.config.paths import RunPaths
+from complete_control.config.plant_config import PlantConfig
+from complete_control.plant.robotic_plant import RoboticPlant
 
 if __name__ == "__main__":
-    generate_image(1.57079633, None, "./test_start.bmp")
-    generate_image(0.34906585, None, "./test_end.bmp")
+    joint_angle = 90
+    for target in [20, 140]:
+        for color, color_label in zip(
+            (TargetColor.BLUE_LEFT, TargetColor.RED_RIGHT),
+            ("blue", "red"),
+        ):
+            image_path = f"./data/start_{target}_{color_label}.bmp"
+            run_paths = RunPaths.from_run_id(
+                datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            )
+            config = PlantConfig.from_runpaths(
+                run_paths,
+                simulation=SimulationParams(
+                    oracle=OracleData(
+                        init_joint_angle=joint_angle,
+                        tgt_joint_angle=target,
+                        target_color=color,
+                    )
+                ),
+            )
+            plant = RoboticPlant(config, pybullet)
+            plant._capture_state_and_save(image_path)
+            plant.p.resetSimulation()
+            plant.p.disconnect()
