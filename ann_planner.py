@@ -7,7 +7,7 @@ import os
 import sys
 import matplotlib.pyplot as plt
 
-import utils
+from . import utils
 
 # --- ANN Module ---
 
