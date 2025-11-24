@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 import os
-import utils
-from ann_planner import ANNPlanner, RobotArmDataset
-from gle_planner import GLEPlanner
 import torch
 from torchvision import transforms
 
-def evaluate_model(model, train_loader, all_image_data):
+from . import utils
+from .ann_planner import ANNPlanner, RobotArmDataset
+from .gle_planner import GLEPlanner
+
+def evaluate_model(model, train_loader, all_image_data, path_prefix=""):
     print("\n--- Demonstration of Inference ---")
     model.eval()
     with torch.no_grad():
@@ -43,7 +44,7 @@ def evaluate_model(model, train_loader, all_image_data):
                 print(f"True Trajectory (first 5 points): {single_true_trajectory.cpu().numpy()[:5]}")
                 print(f"Predicted Trajectory (first 5 points): {predicted_trajectory[:5]}")
 
-                # Optional: You could plot these trajectories to visualize the fit
+                # Optional: Plot the trajectories to visualize the fit
                 import matplotlib.pyplot as plt
                 plt.figure()
                 plt.plot(utils.rad2deg(single_true_trajectory.cpu().numpy()), label='True Trajectory')
@@ -52,45 +53,27 @@ def evaluate_model(model, train_loader, all_image_data):
                 plt.xlabel("Time Step")
                 plt.ylabel("Elbow Angle (rad)")
                 plt.legend()
-                plt.savefig(f"./results/{os.path.basename(original_item_data['image_path']).removesuffix('.bmp')}_trajectory.png")
+                plt.savefig(os.path.join(path_prefix, f"results/{os.path.basename(original_item_data['image_path']).removesuffix('.bmp')}_trajectory.png"))
                 plt.show()
                 plt.close()  # Close the plot to free memory
 
 if __name__ == '__main__':
     print("Evaluating Planner models for Robotic Arm...")
     # Define your data directory relative to where you run this script
-    EXPERIMENT_DIR = './' # Make sure this path is correct
-    DATA_DIR = os.path.join(EXPERIMENT_DIR, 'data/')
-    print("Using data from:", DATA_DIR)
+    EXPERIMENT_DIR = "submodules/pfc_planner"  # Make sure this path is correct
+    DATA_DIR = os.path.join(EXPERIMENT_DIR, "data/")
 
-    # Load data by calling the function from the imported module
-    # The function now returns the loaded data explicitly
-    loaded_data = utils.load_all_predefined_data_and_config(DATA_DIR)
-
-    if loaded_data is None:
-        print("Failed to load data, exiting.")
-        sys.exit(1) # Exit if data loading failed
-
-    # Access the loaded data from the dictionary
-    FLEXION_TRAJECTORY_DATA = loaded_data['FLEXION_TRAJECTORY_DATA']
-    EXTENSION_TRAJECTORY_DATA = loaded_data['EXTENSION_TRAJECTORY_DATA']
-    TASK_MAPPING = loaded_data['TASK_MAPPING']
-    TRAJECTORY_LEN = loaded_data['TRAJECTORY_LEN']
-    INITIAL_ELBOW_ANGLE = loaded_data['INITIAL_ELBOW_ANGLE']
-
-    # Pass loaded data explicitly to get_image_paths_and_labels
-    all_image_data = utils.get_image_paths_and_labels(
-        DATA_DIR,
-        FLEXION_TRAJECTORY_DATA,
-        EXTENSION_TRAJECTORY_DATA,
-        TASK_MAPPING,
-        INITIAL_ELBOW_ANGLE
-    )
+    # Load image data
+    all_image_data = utils.get_image_paths_and_labels(DATA_DIR)
 
     print(f"Loaded {len(all_image_data)} distinct data samples for training.")
     if not all_image_data:
         print("No image data found. Please check DATA_DIR and filename patterns.")
         sys.exit(1)
+
+    # Dynamically get trajectory length from the first data sample
+    TRAJECTORY_LEN = all_image_data[0]['trajectory_len']
+    print(f"Detected trajectory length: {TRAJECTORY_LEN}")
 
     image_transform = transforms.Compose([
         transforms.Resize((100, 100)),
@@ -106,18 +89,18 @@ if __name__ == '__main__':
 
     gle = GLEPlanner(tau=1.0, dt=0.01, num_choices=num_choices, trajectory_length=TRAJECTORY_LEN)
     try:
-        gle.load_state_dict(torch.load('./models/trained_gle_planner.pth'))
+        gle.load_state_dict(torch.load(os.path.join(EXPERIMENT_DIR, 'models/trained_gle_planner.pth')))
     except FileNotFoundError:
         print("GLE model file not found. Please ensure the model is trained and saved correctly.")
         sys.exit(1)
     ann = ANNPlanner(num_choices=num_choices, trajectory_length=TRAJECTORY_LEN)
     try:
-        ann.load_state_dict(torch.load('./models/trained_ann_planner.pth'))
+        ann.load_state_dict(torch.load(os.path.join(EXPERIMENT_DIR, 'models/trained_ann_planner.pth')))
     except FileNotFoundError:
         print("ANN model file not found. Please ensure the model is trained and saved correctly.")
         sys.exit(1)
 
     for model in [gle, ann]:
         print(f"Evaluating model: {model.__class__.__name__}")
-        evaluate_model(model, train_loader, all_image_data)
+        evaluate_model(model, train_loader, all_image_data, path_prefix=EXPERIMENT_DIR)
         print(f"Finished evaluating model: {model.__class__.__name__}\n")

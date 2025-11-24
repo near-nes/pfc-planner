@@ -9,8 +9,6 @@ import matplotlib.pyplot as plt
 
 from . import utils
 
-# --- ANN Module ---
-
 class ANNPlanner(nn.Module):
     def __init__(self, num_choices, trajectory_length):
         super(ANNPlanner, self).__init__()
@@ -52,8 +50,6 @@ class ANNPlanner(nn.Module):
         # but to align with GLE we return a single tensor
         return torch.cat((predicted_trajectory, choice_logits), dim=1)
 
-# --- Dataset and DataLoader ---
-
 class RobotArmDataset(torch.utils.data.Dataset):
     def __init__(self, image_data, transform=None):
         self.image_data = image_data
@@ -78,39 +74,24 @@ class RobotArmDataset(torch.utils.data.Dataset):
 
         return image, target_trajectory, torch.tensor(target_choice_idx, dtype=torch.long)
 
-# --- Main Execution ---
 if __name__ == "__main__":
     print("Starting ANN Planner for Robotic Arm...")
     # Define your data directory relative to where you run this script
-    DATA_DIR = './data/' # Make sure this path is correct
+    EXPERIMENT_DIR = "submodules/pfc_planner"  # Make sure this path is correct
+    DATA_DIR = os.path.join(EXPERIMENT_DIR, "data/")
     print("Using data from:", DATA_DIR)
 
-    loaded_data = utils.load_all_predefined_data_and_config(DATA_DIR)
-
-    if loaded_data is None:
-        print("Failed to load data, exiting.")
-        sys.exit(1) # Exit if data loading failed
-
-    # Access the loaded data from the dictionary
-    FLEXION_TRAJECTORY_DATA = loaded_data['FLEXION_TRAJECTORY_DATA']
-    EXTENSION_TRAJECTORY_DATA = loaded_data['EXTENSION_TRAJECTORY_DATA']
-    TASK_MAPPING = loaded_data['TASK_MAPPING']
-    TRAJECTORY_LEN = loaded_data['TRAJECTORY_LEN']
-    INITIAL_ELBOW_ANGLE = loaded_data['INITIAL_ELBOW_ANGLE']
-
-    # Pass loaded data explicitly to get_image_paths_and_labels
-    all_image_data = utils.get_image_paths_and_labels(
-        DATA_DIR,
-        FLEXION_TRAJECTORY_DATA,
-        EXTENSION_TRAJECTORY_DATA,
-        TASK_MAPPING,
-        INITIAL_ELBOW_ANGLE
-    )
+    # Load image data
+    all_image_data = utils.get_image_paths_and_labels(DATA_DIR)
 
     print(f"Loaded {len(all_image_data)} distinct data samples for training.")
     if not all_image_data:
         print("No image data found. Please check DATA_DIR and filename patterns.")
         sys.exit(1)
+
+    # Dynamically get trajectory length from the first data sample
+    TRAJECTORY_LEN = all_image_data[0]['trajectory_len']
+    print(f"Detected trajectory length: {TRAJECTORY_LEN}")
 
     image_transform = transforms.Compose([
         transforms.Resize((100, 100)),
@@ -126,7 +107,6 @@ if __name__ == "__main__":
     # Pass trajectory_length to the model
     model = ANNPlanner(num_choices=num_choices, trajectory_length=TRAJECTORY_LEN)
 
-    # --- Loss Functions ---
     # MSELoss for the trajectory regression (comparing sequences)
     criterion_trajectory = nn.MSELoss()
     # CrossEntropyLoss for the choice classification
@@ -156,15 +136,14 @@ if __name__ == "__main__":
             running_loss += total_loss.item()
 
         # Print loss less frequently due to high epoch count
-        if (epoch + 1) % 100 == 0 or epoch == 0:
+        if (epoch + 1) % 10 == 0 or epoch == 0:
             print(f"Epoch {epoch+1}/{num_epochs}, Loss: {running_loss/len(train_loader):.6f}") # Increased precision
 
     print("\nTraining finished.")
 
-    # --- Save the model ---
-    MODEL_SAVE_PATH = './models/trained_ann_planner.pth' # Choose a meaningful file name
+    MODEL_SAVE_PATH = os.path.join(EXPERIMENT_DIR, "models/trained_ann_planner.pth")
     torch.save(model.state_dict(), MODEL_SAVE_PATH)
     print(f"Model saved to {MODEL_SAVE_PATH}")
 
-    from evaluate import evaluate_model
-    evaluate_model(model, train_loader, all_image_data)
+    from .evaluate import evaluate_model
+    evaluate_model(model, train_loader, all_image_data, path_prefix=EXPERIMENT_DIR)

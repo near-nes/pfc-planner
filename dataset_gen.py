@@ -20,7 +20,7 @@ from complete_control.plant.robotic_plant import RoboticPlant
 
 if __name__ == "__main__":
     joint_angle = 90
-    for target in [20, 140]:
+    for target in range(0, 151, 10):
         for color, color_label in zip(
             (TargetColor.BLUE_LEFT, TargetColor.RED_RIGHT),
             ("blue", "red"),
