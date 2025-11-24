@@ -97,14 +97,13 @@ def get_image_paths_and_labels(
             end_angle_deg=target_final_angle
         )
         # plot trajectory for debugging
-        import matplotlib.pyplot as plt
-        plt.plot(ground_truth)
-        plt.title(f"Trajectory from {initial_elbow_angle} to {target_final_angle}")
-        plt.xlabel("Time step")
-        plt.ylabel("Elbow Angle (deg)")
-        plt.savefig(f"trajectory_{initial_elbow_angle}_to_{target_final_angle}.png")
-        plt.close()
-        plt.clf()
+        # import matplotlib.pyplot as plt
+        # plt.plot(ground_truth)
+        # plt.title(f"Trajectory from {initial_elbow_angle} to {target_final_angle}")
+        # plt.xlabel("Time step")
+        # plt.ylabel("Elbow Angle (deg)")
+        # plt.savefig(f"submodules/pfc_planner/data/trajectory_{initial_elbow_angle}_to_{target_final_angle}.png")
+        # plt.close()
 
         angle_diff = target_final_angle - initial_elbow_angle
 
