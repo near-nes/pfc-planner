@@ -5,10 +5,10 @@ import matplotlib.pyplot as plt
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from lib.abstract_net import GLEAbstractNet
-from lib.dynamics import GLEDynamics
-from lib.layers import GLELinear
-from lib.utils import get_phi_and_derivative
+from ..gle.abstract_net import GLEAbstractNet
+from ..gle.dynamics import GLEDynamics
+from ..gle.layers import GLELinear
+from ..gle.utils import get_phi_and_derivative
 from torchvision import transforms
 
 from . import utils
