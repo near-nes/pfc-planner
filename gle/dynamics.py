@@ -1,5 +1,6 @@
 import torch
 from collections import OrderedDict
+from ..gle.layers import GLELinear, GLEConv
 
 class GLEDynamics():
 
@@ -111,7 +112,10 @@ class GLEDynamics():
     # compute grad for time constants
     def compute_tau_grad(self, e, u_dot):
         if self.learn_tau:
-            self.tau_m.grad = (e * u_dot).mean(0)
+            if e.dim() > 2:  # For convolutional layers
+                self.tau_m.grad = (e * u_dot).mean((0, 2, 3))
+            else:  # For linear layers
+                self.tau_m.grad = (e * u_dot).mean(0)
 
     def is_not_initialized(self):
         return self.u is None
@@ -122,6 +126,9 @@ class GLEDynamics():
         assert self.r is None
         assert self.r_prime is None
         assert self.e_bottom is None
+
+        if r_bottom.dim() > 2 and isinstance(self.conn, GLELinear):
+            r_bottom = torch.flatten(r_bottom, 1)
 
         inst_s = self.conn(r_bottom)
 
@@ -183,11 +190,17 @@ class GLEDynamics():
 
         """
 
+        # Reshape inst_e if it's coming from a linear layer to a conv layer
+        if inst_e.dim() == 2 and self.r.dim() == 4:
+            inst_e = inst_e.view(self.r.shape)
+
         # compute instantaneous error and scale inst_e
         # by derivative of activation function
         inst_e *= self.r_prime
 
         # feedforward input signal
+        if r_bottom.dim() > 2 and isinstance(self.conn, GLELinear):
+            r_bottom = torch.flatten(r_bottom, 1)
         inst_s = self.conn(r_bottom)
 
         # prospective errors
@@ -218,7 +231,10 @@ class GLEDynamics():
             self.compute_tau_grad(prosp_v, u_dot)
 
         # backpropagate errors to layer below
-        e_bottom = self.conn.compute_error(prosp_v)
+        if isinstance(self.conn, GLEConv):
+            e_bottom = self.conn.compute_error(prosp_v, bottom_r_shape=r_bottom.shape)
+        else:
+            e_bottom = self.conn.compute_error(prosp_v)
 
         # for logging only
         self.prosp_u = prosp_u.clone().detach()

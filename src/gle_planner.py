@@ -5,14 +5,14 @@ import matplotlib.pyplot as plt
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from ..gle.abstract_net import GLEAbstractNet
-from ..gle.dynamics import GLEDynamics
-from ..gle.layers import GLELinear
-from ..gle.utils import get_phi_and_derivative
 from torchvision import transforms
 
 from . import utils
 from .ann_planner import RobotArmDataset
+from ..gle.abstract_net import GLEAbstractNet
+from ..gle.dynamics import GLEDynamics
+from ..gle.layers import GLELinear
+from ..gle.utils import get_phi_and_derivative
 
 
 class GLEPlanner(GLEAbstractNet, torch.nn.Module):

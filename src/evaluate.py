@@ -54,7 +54,7 @@ def evaluate_model(model, train_loader, all_image_data, path_prefix=""):
                 plt.ylabel("Elbow Angle (rad)")
                 plt.legend()
                 plt.savefig(os.path.join(path_prefix, f"results/{os.path.basename(original_item_data['image_path']).removesuffix('.bmp')}_trajectory.png"))
-                plt.show()
+                # plt.show()
                 plt.close()  # Close the plot to free memory
 
 if __name__ == '__main__':
