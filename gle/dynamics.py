@@ -1,6 +1,6 @@
 import torch
 from collections import OrderedDict
-from ..gle.layers import GLELinear, GLEConv
+from gle.layers import GLELinear, GLEConv
 
 class GLEDynamics():
 

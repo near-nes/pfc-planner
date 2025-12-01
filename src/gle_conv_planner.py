@@ -6,12 +6,12 @@ import torch.nn as nn
 import torch.optim as optim
 from torchvision import transforms
 
-from ..gle.abstract_net import GLEAbstractNet
-from ..gle.dynamics import GLEDynamics
-from ..gle.layers import GLEConv, GLELinear
-from ..gle.utils import get_phi_and_derivative
-from .ann_planner import RobotArmDataset
-from . import utils
+from gle.abstract_net import GLEAbstractNet
+from gle.dynamics import GLEDynamics
+from gle.layers import GLEConv, GLELinear
+from gle.utils import get_phi_and_derivative
+from ann_planner import RobotArmDataset
+import utils
 
 
 class GLEConvPlanner(GLEAbstractNet, torch.nn.Module):
@@ -74,7 +74,7 @@ if __name__ == "__main__":
     os.makedirs("./models", exist_ok=True)
     os.makedirs("./results", exist_ok=True)
     # Define your data directory relative to where you run this script
-    EXPERIMENT_DIR = "submodules/pfc_planner"
+    EXPERIMENT_DIR = "."
     DATA_DIR = os.path.join(EXPERIMENT_DIR, "data/")
     print("Using data from:", DATA_DIR)
 
@@ -151,5 +151,5 @@ if __name__ == "__main__":
     torch.save(model.state_dict(), MODEL_SAVE_PATH)
     print(f"Model saved to {MODEL_SAVE_PATH}")
 
-    from .evaluate import evaluate_model
+    from evaluate import evaluate_model
     evaluate_model(model, train_loader, all_image_data, path_prefix=EXPERIMENT_DIR)

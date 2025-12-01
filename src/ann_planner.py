@@ -7,7 +7,7 @@ import os
 import sys
 import matplotlib.pyplot as plt
 
-from . import utils
+import utils
 
 class ANNPlanner(nn.Module):
     def __init__(self, num_choices, trajectory_length):
@@ -72,7 +72,7 @@ if __name__ == "__main__":
     os.makedirs("./models", exist_ok=True)
     os.makedirs("./results", exist_ok=True)
     # Define your data directory relative to where you run this script
-    EXPERIMENT_DIR = "submodules/pfc_planner"  # Make sure this path is correct
+    EXPERIMENT_DIR = "."  # Make sure this path is correct
     DATA_DIR = os.path.join(EXPERIMENT_DIR, "data/")
     print("Using data from:", DATA_DIR)
 
@@ -139,5 +139,5 @@ if __name__ == "__main__":
     torch.save(model.state_dict(), MODEL_SAVE_PATH)
     print(f"Model saved to {MODEL_SAVE_PATH}")
 
-    from .evaluate import evaluate_model
+    from evaluate import evaluate_model
     evaluate_model(model, train_loader, all_image_data, path_prefix=EXPERIMENT_DIR)

@@ -3,10 +3,10 @@ import os
 import torch
 from torchvision import transforms
 
-from . import utils
-from .ann_planner import ANNPlanner, RobotArmDataset
-from .gle_conv_planner import GLEConvPlanner
-from .gle_planner import GLEPlanner
+import utils
+from ann_planner import ANNPlanner, RobotArmDataset
+from gle_conv_planner import GLEConvPlanner
+from gle_planner import GLEPlanner
 
 def evaluate_model(model, train_loader, all_image_data, path_prefix=""):
     print("\n--- Demonstration of Inference ---")
@@ -44,8 +44,8 @@ def evaluate_model(model, train_loader, all_image_data, path_prefix=""):
                 print(f"Predicted Choice (Left/Right): {predicted_choice}")
 
                 # Compare predicted and true trajectories
-                print(f"True Trajectory (last 5 points): {single_true_trajectory.cpu().numpy()[-5:]}")
-                print(f"Predicted Trajectory (last 5 points): {predicted_trajectory[-5:]}")
+                print(f"True Trajectory (last 5 points): {utils.rad2deg(single_true_trajectory.cpu().numpy()[-5:])}")
+                print(f"Predicted Trajectory (last 5 points): {utils.rad2deg(predicted_trajectory[-5:])}")
 
                 # Optional: Plot the trajectories to visualize the fit
                 import matplotlib.pyplot as plt
@@ -71,7 +71,7 @@ if __name__ == '__main__':
 
     print("Evaluating Planner models for Robotic Arm...")
     # Define your data directory relative to where you run this script
-    EXPERIMENT_DIR = "submodules/pfc_planner"  # Make sure this path is correct
+    EXPERIMENT_DIR = "."  # Make sure this path is correct
     DATA_DIR = os.path.join(EXPERIMENT_DIR, "data/")
 
     # Load image data
