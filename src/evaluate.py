@@ -44,8 +44,8 @@ def evaluate_model(model, train_loader, all_image_data, path_prefix=""):
                 print(f"Predicted Choice (Left/Right): {predicted_choice}")
 
                 # Compare predicted and true trajectories
-                print(f"True Trajectory (last 5 points): {single_true_trajectory.cpu().numpy()[-5:]}")
-                print(f"Predicted Trajectory (last 5 points): {predicted_trajectory[-5:]}")
+                print(f"True Trajectory (last 5 points): {utils.rad2deg(single_true_trajectory.cpu().numpy()[-5:])}")
+                print(f"Predicted Trajectory (last 5 points): {utils.rad2deg(predicted_trajectory[-5:])}")
 
                 # Optional: Plot the trajectories to visualize the fit
                 import matplotlib.pyplot as plt
