@@ -79,6 +79,9 @@ if not _USE_CONTROLLER:
             # shape: (n_trials, timesteps)
             full_traj = np.tile(full_traj[np.newaxis, :], (sim_params.n_trials, 1))
 
+        # Convert to radians before returning
+        full_traj = np.deg2rad(full_traj)
+
         return full_traj
 
     # point generate_trajectory_minjerk name to fallback impl so the rest of the code can use the same name
@@ -215,7 +218,7 @@ def get_image_paths_and_labels(
             'initial_angle': initial_elbow_angle,
             'target_final_angle': target_final_angle,
             'angle_difference': angle_diff,
-            'ground_truth_trajectory': deg2rad(np.array(ground_truth)).tolist(),  # Convert to radians
+            'ground_truth_trajectory': ground_truth,  # in radians
             'target_choice': task_mapping.get(color),
             'trajectory_len': len(ground_truth)
         })
