@@ -63,6 +63,12 @@ def evaluate_model(model, train_loader, all_image_data, path_prefix=""):
         print(f"\nOverall Choice Prediction Accuracy: {accuracy*100:.2f}%")
 
 if __name__ == '__main__':
+    # get which model to evaluate from command line args
+    import argparse
+    parser = argparse.ArgumentParser(description="Evaluate Planner Models for Robotic Arm")
+    parser.add_argument('--model', type=str, choices=['ann', 'gle', 'gle_conv'], default='gle_conv', help="Model type to evaluate")
+    args = parser.parse_args()
+
     print("Evaluating Planner models for Robotic Arm...")
     # Define your data directory relative to where you run this script
     EXPERIMENT_DIR = "submodules/pfc_planner"  # Make sure this path is correct
@@ -90,20 +96,29 @@ if __name__ == '__main__':
 
     num_choices = 2
 
-    gle = GLEConvPlanner(tau=1.0, dt=0.01, num_choices=num_choices, trajectory_length=TRAJECTORY_LEN)
-    try:
-        gle.load_state_dict(torch.load(os.path.join(EXPERIMENT_DIR, 'models/trained_gle_conv_planner.pth')))
-    except FileNotFoundError:
-        print("GLE model file not found. Please ensure the model is trained and saved correctly.")
-        sys.exit(1)
-    ann = ANNPlanner(num_choices=num_choices, trajectory_length=TRAJECTORY_LEN)
-    try:
-        ann.load_state_dict(torch.load(os.path.join(EXPERIMENT_DIR, 'models/trained_ann_planner.pth')))
-    except FileNotFoundError:
-        print("ANN model file not found. Please ensure the model is trained and saved correctly.")
-        sys.exit(1)
+    if args.model == 'gle_conv':
+        model = GLEConvPlanner(tau=1.0, dt=0.01, num_choices=num_choices, trajectory_length=TRAJECTORY_LEN)
+        try:
+            model.load_state_dict(torch.load(os.path.join(EXPERIMENT_DIR, 'models/trained_gle_conv_planner.pth')))
+        except FileNotFoundError:
+            print("GLE model file not found. Please ensure the model is trained and saved correctly.")
+            sys.exit(1)
+    elif args.model == 'gle':
+        from .gle_planner import GLEPlanner
+        model = GLEPlanner(tau=1.0, dt=0.01, num_choices=num_choices, trajectory_length=TRAJECTORY_LEN)
+        try:
+            model.load_state_dict(torch.load(os.path.join(EXPERIMENT_DIR, 'models/trained_gle_planner.pth')))
+        except FileNotFoundError:
+            print("GLE model file not found. Please ensure the model is trained and saved correctly.")
+            sys.exit(1)
+    elif args.model == 'ann':
+        model = ANNPlanner(num_choices=num_choices, trajectory_length=TRAJECTORY_LEN)
+        try:
+            model.load_state_dict(torch.load(os.path.join(EXPERIMENT_DIR, 'models/trained_ann_planner.pth')))
+        except FileNotFoundError:
+            print("ANN model file not found. Please ensure the model is trained and saved correctly.")
+            sys.exit(1)
 
-    for model in [gle, ann]:
-        print(f"Evaluating model: {model.__class__.__name__}")
-        evaluate_model(model, train_loader, all_image_data, path_prefix=EXPERIMENT_DIR)
-        print(f"Finished evaluating model: {model.__class__.__name__}\n")
+    print(f"Evaluating model: {model.__class__.__name__}")
+    evaluate_model(model, train_loader, all_image_data, path_prefix=EXPERIMENT_DIR)
+    print(f"Finished evaluating model: {model.__class__.__name__}\n")
