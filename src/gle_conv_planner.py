@@ -111,6 +111,9 @@ if __name__ == "__main__":
     UPDATE_STEPS = 10
     num_epochs = 500
     print("\nStarting online training for GLEConvPlanner...")
+    loss_history = []
+    trajectory_loss_history = []
+    choice_loss_history = []
     for epoch in range(num_epochs):
         model.train()
         running_loss = 0.0
@@ -144,8 +147,24 @@ if __name__ == "__main__":
 
         if (epoch + 1) % 10 == 0 or epoch == 0:
             print(f"Epoch {epoch+1}/{num_epochs}, Loss: {running_loss/len(train_loader):.6f}, Trajectory Loss: {running_trajectory_loss/len(train_loader):.6f}, Choice Loss: {running_choice_loss/len(train_loader):.6f}")
+        loss_history.append(running_loss / len(train_loader))
+        trajectory_loss_history.append(running_trajectory_loss / len(train_loader))
+        choice_loss_history.append(running_choice_loss / len(train_loader))
 
     print("\nTraining finished.")
+
+    import matplotlib.pyplot as plt
+    plt.figure(figsize=(10, 6))
+    plt.plot(loss_history, label='Total Loss')
+    plt.plot(trajectory_loss_history, label='Trajectory Loss')
+    plt.plot(choice_loss_history, label='Choice Loss')
+    plt.xlabel('Epoch')
+    plt.ylabel('Loss')
+    plt.title('Training Loss History for GLEConvPlanner')
+    plt.legend()
+    plt.grid()
+    plt.savefig(os.path.join(EXPERIMENT_DIR, 'results/gle_conv_planner_training_loss.png'), dpi=300)
+    plt.close()
 
     MODEL_SAVE_PATH = os.path.join(EXPERIMENT_DIR, "models/trained_gle_conv_planner.pth")
     torch.save(model.state_dict(), MODEL_SAVE_PATH)
