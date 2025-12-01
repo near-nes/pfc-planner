@@ -18,6 +18,7 @@ Currently, there are two planners implemented:
 
 ## How to use
 
+### Inside the Docker Container
 The code in this repository is supposed to be run from within [near-nes/controller](https://github.com/near-nes/controller) docker container's project root `/sim/controller` via:
 
 ```bash
@@ -28,4 +29,21 @@ To test the pretrained and saved GLEConvPlanner model, run:
 
 ```bash
 python -m submodules.pfc_planner.src.evaluate --model='gle_conv_planner'
+```
+
+### Locally
+You can also checkout the `local` branch for running the code outside of the docker container.
+
+Install requirements locally in a virtual environment and activate it:
+
+```bash
+python -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+```
+
+Then run the planner module:
+
+```bash
+python src/gle_conv_planner.py
 ```
