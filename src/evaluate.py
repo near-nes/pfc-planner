@@ -5,11 +5,13 @@ from torchvision import transforms
 
 from . import utils
 from .ann_planner import ANNPlanner, RobotArmDataset
+from .gle_conv_planner import GLEConvPlanner
 from .gle_planner import GLEPlanner
 
 def evaluate_model(model, train_loader, all_image_data, path_prefix=""):
     print("\n--- Demonstration of Inference ---")
     model.eval()
+    correct_choices = 0
     with torch.no_grad():
         print("Evaluating on training data:")
         for i, (images, true_trajectory, true_choice_idx) in enumerate(train_loader):
@@ -32,6 +34,7 @@ def evaluate_model(model, train_loader, all_image_data, path_prefix=""):
                 predicted_choice = 'left' if predicted_choice_idx.item() == 0 else 'right'
 
                 true_choice = 'left' if single_true_choice_idx.item() == 0 else 'right'
+                correct_choices += (predicted_choice_idx.item() == single_true_choice_idx.item())
 
                 print(f"\n--- Input Image: {os.path.basename(original_item_data['image_path'])} ---")
                 print(f"Initial Angle (Hardcoded): {original_item_data['initial_angle']}°")
@@ -56,6 +59,8 @@ def evaluate_model(model, train_loader, all_image_data, path_prefix=""):
                 plt.savefig(os.path.join(path_prefix, f"results/{os.path.basename(original_item_data['image_path']).removesuffix('.bmp')}_trajectory.png"))
                 # plt.show()
                 plt.close()  # Close the plot to free memory
+        accuracy = correct_choices / len(all_image_data)
+        print(f"\nOverall Choice Prediction Accuracy: {accuracy*100:.2f}%")
 
 if __name__ == '__main__':
     print("Evaluating Planner models for Robotic Arm...")
@@ -77,9 +82,7 @@ if __name__ == '__main__':
 
     image_transform = transforms.Compose([
         transforms.Resize((100, 100)),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-        transforms.Lambda(lambda x: x.view(-1))  # Flatten the image to a vector
+        transforms.ToTensor()
     ])
 
     train_dataset = RobotArmDataset(all_image_data, transform=image_transform)
@@ -87,9 +90,9 @@ if __name__ == '__main__':
 
     num_choices = 2
 
-    gle = GLEPlanner(tau=1.0, dt=0.01, num_choices=num_choices, trajectory_length=TRAJECTORY_LEN)
+    gle = GLEConvPlanner(tau=1.0, dt=0.01, num_choices=num_choices, trajectory_length=TRAJECTORY_LEN)
     try:
-        gle.load_state_dict(torch.load(os.path.join(EXPERIMENT_DIR, 'models/trained_gle_planner.pth')))
+        gle.load_state_dict(torch.load(os.path.join(EXPERIMENT_DIR, 'models/trained_gle_conv_planner.pth')))
     except FileNotFoundError:
         print("GLE model file not found. Please ensure the model is trained and saved correctly.")
         sys.exit(1)

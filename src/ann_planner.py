@@ -16,18 +16,12 @@ class ANNPlanner(nn.Module):
         self.trajectory_length = trajectory_length
         # Simplified CNN for image processing
         self.conv_layers = nn.Sequential(
-            nn.Conv2d(3, 16, kernel_size=3, padding=1),
-            nn.ReLU(),
-            nn.MaxPool2d(2, 2),
-            nn.Conv2d(16, 32, kernel_size=3, padding=1),
-            nn.ReLU(),
-            nn.MaxPool2d(2, 2),
-            nn.Conv2d(32, 64, kernel_size=3, padding=1),
-            nn.ReLU(),
-            nn.MaxPool2d(2, 2),
+            nn.Conv2d(3, 16, kernel_size=5, stride=4, padding=2), # Output: 16x25x25
+            nn.Tanh(),
+            nn.Conv2d(16, 32, kernel_size=3, stride=4, padding=1), # Output: 32x7x7
+            nn.Tanh(),
             nn.Flatten()
         )
-
         # Calculate input features for the linear layers
         self._dummy_input_shape = (1, 3, 100, 100) # Assuming 100x100 images
         dummy_input = torch.rand(self._dummy_input_shape)
@@ -41,7 +35,6 @@ class ANNPlanner(nn.Module):
         self.choice_classifier = nn.Linear(conv_output_size, num_choices)
 
     def forward(self, x):
-        x = torch.unflatten(x, 1, (3, 100, 100))  # Ensure input is in correct shape
         features = self.conv_layers(x)
         predicted_trajectory = self.trajectory_regressor(features)
         choice_logits = self.choice_classifier(features)
@@ -76,6 +69,8 @@ class RobotArmDataset(torch.utils.data.Dataset):
 
 if __name__ == "__main__":
     print("Starting ANN Planner for Robotic Arm...")
+    os.makedirs("./models", exist_ok=True)
+    os.makedirs("./results", exist_ok=True)
     # Define your data directory relative to where you run this script
     EXPERIMENT_DIR = "submodules/pfc_planner"  # Make sure this path is correct
     DATA_DIR = os.path.join(EXPERIMENT_DIR, "data/")
@@ -83,7 +78,6 @@ if __name__ == "__main__":
 
     # Load image data
     all_image_data = utils.get_image_paths_and_labels(DATA_DIR)
-
     print(f"Loaded {len(all_image_data)} distinct data samples for training.")
     if not all_image_data:
         print("No image data found. Please check DATA_DIR and filename patterns.")
@@ -95,9 +89,7 @@ if __name__ == "__main__":
 
     image_transform = transforms.Compose([
         transforms.Resize((100, 100)),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-        transforms.Lambda(lambda x: x.view(-1))  # Flatten the image to a vector
+        transforms.ToTensor()
     ])
 
     train_dataset = RobotArmDataset(all_image_data, transform=image_transform)
@@ -115,10 +107,12 @@ if __name__ == "__main__":
     optimizer = optim.Adam(model.parameters(), lr=0.001)
 
     num_epochs = 500  # More epochs might be needed for sequence regression
-    print("\nStarting offline training...")
+    print("\nStarting offline ANN training...")
     for epoch in range(num_epochs):
         model.train()
         running_loss = 0.0
+        running_trajectory_loss = 0.0
+        running_choice_loss = 0.0
         for i, (images, true_trajectory, target_choice_idx) in enumerate(train_loader):
             optimizer.zero_grad()
 
@@ -128,16 +122,16 @@ if __name__ == "__main__":
 
             loss_trajectory = criterion_trajectory(predicted_trajectory, true_trajectory)
             loss_choice = criterion_choice(choice_logits, target_choice_idx)
-
             total_loss = loss_trajectory + loss_choice
             total_loss.backward()
             optimizer.step()
 
             running_loss += total_loss.item()
+            running_trajectory_loss += loss_trajectory.item()
+            running_choice_loss += loss_choice.item()
 
-        # Print loss less frequently due to high epoch count
         if (epoch + 1) % 10 == 0 or epoch == 0:
-            print(f"Epoch {epoch+1}/{num_epochs}, Loss: {running_loss/len(train_loader):.6f}") # Increased precision
+            print(f"Epoch {epoch+1}/{num_epochs}, Loss: {running_loss/len(train_loader):.6f}, Trajectory Loss: {running_trajectory_loss/len(train_loader):.6f}, Choice Loss: {running_choice_loss/len(train_loader):.6f}")
 
     print("\nTraining finished.")
 
