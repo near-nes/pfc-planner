@@ -6,9 +6,10 @@ import numpy as np
 from torchvision import transforms
 
 import utils
-from ann_planner import ANNPlanner, RobotArmDataset
+from ann_planner import ANNPlanner
 from gle_conv_planner import GLEConvPlanner
 from gle_planner import GLEPlanner
+from dataset import RobotArmDataset, get_image_paths_and_labels
 
 def evaluate_model(model, train_loader, all_image_data, path_prefix=""):
     # print("\n--- Demonstration of Inference ---")
@@ -92,7 +93,7 @@ if __name__ == '__main__':
     DATA_DIR = os.path.join(EXPERIMENT_DIR, "data/")
 
     # Load image data
-    all_image_data = utils.get_image_paths_and_labels(DATA_DIR)
+    all_image_data = get_image_paths_and_labels(DATA_DIR)
 
     print(f"Loaded {len(all_image_data)} distinct data samples for training.")
     if not all_image_data:

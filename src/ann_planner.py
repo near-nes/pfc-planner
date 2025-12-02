@@ -8,6 +8,7 @@ import sys
 import matplotlib.pyplot as plt
 
 import utils
+from dataset import RobotArmDataset, get_image_paths_and_labels
 
 class ANNPlanner(nn.Module):
     def __init__(self, num_choices, trajectory_length):
@@ -38,34 +39,8 @@ class ANNPlanner(nn.Module):
         features = self.conv_layers(x)
         predicted_trajectory = self.trajectory_regressor(features)
         choice_logits = self.choice_classifier(features)
-        # in case of an ANN we would simply return
-        # return predicted_trajectory, choice_logits
-        # but to align with GLE we return a single tensor
+        # to align with GLE we return a single tensor
         return torch.cat((predicted_trajectory, choice_logits), dim=1)
-
-class RobotArmDataset(torch.utils.data.Dataset):
-    def __init__(self, image_data, transform=None):
-        self.image_data = image_data
-        self.transform = transform
-        self.choice_to_idx = {'left': 0, 'right': 1}
-
-    def __len__(self):
-        return len(self.image_data)
-
-    def __getitem__(self, idx):
-        item = self.image_data[idx]
-        image = Image.open(item['image_path']).convert('RGB')
-
-        if self.transform:
-            image = self.transform(image)
-
-        # Target for trajectory regression (the full sequence)
-        target_trajectory = torch.tensor(item['ground_truth_trajectory'], dtype=torch.float)
-
-        # Target for choice classification
-        target_choice_idx = self.choice_to_idx[item['target_choice']]
-
-        return image, target_trajectory, torch.tensor(target_choice_idx, dtype=torch.long)
 
 if __name__ == "__main__":
     print("Starting ANN Planner for Robotic Arm...")
@@ -77,7 +52,7 @@ if __name__ == "__main__":
     print("Using data from:", DATA_DIR)
 
     # Load image data
-    all_image_data = utils.get_image_paths_and_labels(DATA_DIR)
+    all_image_data = get_image_paths_and_labels(DATA_DIR)
     print(f"Loaded {len(all_image_data)} distinct data samples for training.")
     if not all_image_data:
         print("No image data found. Please check DATA_DIR and filename patterns.")

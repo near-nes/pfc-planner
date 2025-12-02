@@ -10,7 +10,7 @@ from gle.abstract_net import GLEAbstractNet
 from gle.dynamics import GLEDynamics
 from gle.layers import GLEConv, GLELinear
 from gle.utils import get_phi_and_derivative
-from ann_planner import RobotArmDataset
+from dataset import RobotArmDataset, get_image_paths_and_labels
 import utils
 
 
@@ -79,7 +79,7 @@ if __name__ == "__main__":
     print("Using data from:", DATA_DIR)
 
     # Load image data
-    all_image_data = utils.get_image_paths_and_labels(DATA_DIR)
+    all_image_data = get_image_paths_and_labels(DATA_DIR)
     print(f"Loaded {len(all_image_data)} distinct data samples for training.")
     if not all_image_data:
         print("No image data found. Please check DATA_DIR.")
