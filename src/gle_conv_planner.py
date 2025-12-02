@@ -100,7 +100,7 @@ if __name__ == "__main__":
 
     num_choices = 2
     # Pass trajectory_length to the model
-    model = GLEConvPlanner(tau=1.0, dt=0.01, num_choices=num_choices, trajectory_length=TRAJECTORY_LEN)
+    model = GLEConvPlanner(tau=1.0, dt=0.1, num_choices=num_choices, trajectory_length=TRAJECTORY_LEN)
 
     # MSELoss for the trajectory regression (comparing sequences)
     criterion_trajectory = nn.MSELoss()

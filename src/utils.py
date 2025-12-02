@@ -134,14 +134,6 @@ def generate_minjerk_trajectory_for_angles(
 
     return traj_arr.tolist()
 
-def rad2deg(radians: float) -> float:
-    """Convert radians to degrees."""
-    return radians * (180 / 3.141592653589793)
-
-def deg2rad(degrees: float) -> float:
-    """Convert degrees to radians."""
-    return degrees * (3.141592653589793 / 180)
-
 def extract_positions_from_filename(filename: str) -> Tuple[Optional[str], Optional[int], Optional[str]]:
     """
     Parse filename to extract (phase, target_angle, color).
@@ -204,7 +196,8 @@ def get_image_paths_and_labels(
         # plt.title(f"Trajectory from {initial_elbow_angle} to {target_final_angle}")
         # plt.xlabel("Time step")
         # plt.ylabel("Elbow Angle (deg)")
-        # plt.savefig(f"submodules/pfc_planner/data/trajectory_{initial_elbow_angle}_to_{target_final_angle}.png")
+        # plt.savefig(f"data/trajectory_{initial_elbow_angle}_to_{target_final_angle}.png")
+        # plt.show()
         # plt.close()
 
         angle_diff = target_final_angle - initial_elbow_angle
@@ -215,7 +208,7 @@ def get_image_paths_and_labels(
             'initial_angle': initial_elbow_angle,
             'target_final_angle': target_final_angle,
             'angle_difference': angle_diff,
-            'ground_truth_trajectory': deg2rad(np.array(ground_truth)).tolist(),  # Convert to radians
+            'ground_truth_trajectory': np.deg2rad(ground_truth).tolist(),  # Convert to radians
             'target_choice': task_mapping.get(color),
             'trajectory_len': len(ground_truth)
         })

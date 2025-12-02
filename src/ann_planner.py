@@ -104,7 +104,7 @@ if __name__ == "__main__":
     # CrossEntropyLoss for the choice classification
     criterion_choice = nn.CrossEntropyLoss()
 
-    optimizer = optim.Adam(model.parameters(), lr=0.001)
+    optimizer = optim.Adam(model.parameters(), lr=0.01)
 
     num_epochs = 500  # More epochs might be needed for sequence regression
     print("\nStarting offline ANN training...")
