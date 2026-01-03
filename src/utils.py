@@ -94,6 +94,7 @@ def generate_minjerk_trajectory_for_angles(
     end_angle_deg: float,
     time_prep: float = 150.0,
     time_move: float = 500.0,
+    time_grasp:float = 0.0,
     time_post: float = 0.0,
     n_trials: int = 1,
     dt: float = 0.1,
@@ -115,6 +116,7 @@ def generate_minjerk_trajectory_for_angles(
         sim_params = SimulationParams(oracle=oracle_data,
                                       time_prep=time_prep,
                                       time_move=time_move,
+                                      time_grasp=time_grasp,
                                       time_post=time_post,
                                       n_trials=n_trials,
                                       frozen=False)
@@ -199,7 +201,12 @@ def get_image_paths_and_labels(
         # Generate the ground truth trajectory programmatically using min-jerk (degrees)
         ground_truth = generate_minjerk_trajectory_for_angles(
             start_angle_deg=initial_elbow_angle,
-            end_angle_deg=target_final_angle
+            end_angle_deg=target_final_angle,
+            time_prep=650,
+            time_move=500,
+            time_grasp=0,
+            time_post=0,
+            dt=1
         )
         # plot trajectory for debugging
         # import matplotlib.pyplot as plt
