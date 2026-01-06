@@ -13,8 +13,7 @@ This simplified version focuses on movements from a 90° starting position to ei
 
 Currently, there are two planners implemented:
 - **ANNPlanner**: An ANN-based planner that uses a CNN + MLP architecture to process the input image and generate the trajectory and decision. This serves as a baseline for the GLEPlanner.
-- **GLEPlanner**: A planner that uses GLE dynamics and learning to generate the trajectory and make decisions.
-- **GLEConvPlanner**: An enhanced version of the GLEPlanner that incorporates convolutional layers for improved image processing.
+- **GLEPlanner**: A planner with similar architecture than the ANN planner taht uses GLE dynamics and learning to generate the trajectory and make decisions.
 
 ## How to use
 
@@ -25,10 +24,10 @@ The code in this repository is supposed to be run from within [near-nes/controll
 python -m submodules.pfc_planner.src.gle_conv_planner
 ```
 
-To test the pretrained and saved GLEConvPlanner model, run:
+To test the pretrained and saved GLEPlanner model, run:
 
 ```bash
-python -m submodules.pfc_planner.src.evaluate --model='gle_conv'
+python -m submodules.pfc_planner.src.evaluate --model='gle'
 ```
 
 ### Locally

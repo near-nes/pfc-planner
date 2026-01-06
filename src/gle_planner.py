@@ -8,7 +8,7 @@ from torchvision import transforms
 
 from ..gle.abstract_net import GLEAbstractNet
 from ..gle.dynamics import GLEDynamics
-from ..gle.layers import GLELinear
+from ..gle.layers import GLEConv, GLELinear
 from ..gle.utils import get_phi_and_derivative
 from .dataset import RobotArmDataset, get_image_paths_and_labels
 from . import utils
@@ -24,28 +24,34 @@ class GLEPlanner(GLEAbstractNet, torch.nn.Module):
 
         self.phi, self.phi_prime = get_phi_and_derivative("tanh")
 
-        self.input_size = 100 * 100 * 3
-        self.output_size = trajectory_length + num_choices
+        # Convolutional layers
+        self.conv1 = GLEConv(3, 16, kernel_size=5, stride=4, padding=1)
+        self.conv2 = GLEConv(16, 32, kernel_size=3, stride=4, padding=1)
 
-        self.first = GLELinear(self.input_size, 300)
-        self.hidden = GLELinear(300, 100)
-        self.last = GLELinear(100, self.output_size)
+        # Calculate input features for the linear layers
+        self._dummy_input_shape = (1, 3, 100, 100) # Assuming 100x100 images
+        dummy_input = torch.rand(self._dummy_input_shape)
+        self.conv_output_size = self.conv2(self.conv1(dummy_input)).view(1, -1).size(1)
 
-        self.first_dyn = GLEDynamics(
-            self.first,
+        # Linear layer
+        self.fc = GLELinear(self.conv_output_size, trajectory_length + num_choices)
+
+        # Dynamics for each layer
+        self.conv1_dyn = GLEDynamics(
+            self.conv1,
             tau_m=self.tau,
             dt=self.dt,
             phi=self.phi,
             phi_prime=self.phi_prime,
         )
-        self.hidden_dyn = GLEDynamics(
-            self.hidden,
+        self.conv2_dyn = GLEDynamics(
+            self.conv2,
             tau_m=self.tau,
             dt=self.dt,
             phi=self.phi,
             phi_prime=self.phi_prime,
         )
-        self.last_dyn = GLEDynamics(self.last, tau_m=self.tau, dt=self.dt)
+        self.fc_dyn = GLEDynamics(self.fc, tau_m=self.tau, dt=self.dt)
 
     def compute_target_error(self, output, target, beta):
         e = torch.zeros_like(output)
@@ -68,7 +74,7 @@ if __name__ == "__main__":
     os.makedirs("./models", exist_ok=True)
     os.makedirs("./results", exist_ok=True)
     # Define your data directory relative to where you run this script
-    EXPERIMENT_DIR = "submodules/pfc_planner"  # Make sure this path is correct
+    EXPERIMENT_DIR = "submodules/pfc_planner"
     DATA_DIR = os.path.join(EXPERIMENT_DIR, "data/")
     print("Using data from:", DATA_DIR)
 
@@ -76,7 +82,7 @@ if __name__ == "__main__":
     all_image_data = get_image_paths_and_labels(DATA_DIR)
     print(f"Loaded {len(all_image_data)} distinct data samples for training.")
     if not all_image_data:
-        print("No image data found. Please check DATA_DIR and filename patterns.")
+        print("No image data found. Please check DATA_DIR.")
         sys.exit(1)
 
     # Dynamically get trajectory length from the first data sample
@@ -86,8 +92,7 @@ if __name__ == "__main__":
     # Image transform without flattening
     image_transform = transforms.Compose([
         transforms.Resize((100, 100)),
-        transforms.ToTensor(),
-        transforms.Lambda(lambda x: x.view(-1))  # Flatten the image to a vector
+        transforms.ToTensor()
     ])
 
     train_dataset = RobotArmDataset(all_image_data, transform=image_transform)
@@ -95,17 +100,20 @@ if __name__ == "__main__":
 
     num_choices = 2
     # Pass trajectory_length to the model
-    model = GLEPlanner(tau=1.0, dt=0.01, num_choices=num_choices, trajectory_length=TRAJECTORY_LEN)
+    model = GLEPlanner(tau=1.0, dt=0.1, num_choices=num_choices, trajectory_length=TRAJECTORY_LEN)
 
     # MSELoss for the trajectory regression (comparing sequences)
     criterion_trajectory = nn.MSELoss()
     # CrossEntropyLoss for the choice classification
     criterion_choice = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(model.parameters(), lr=0.001)
+    optimizer = optim.Adam(model.parameters(), lr=0.01)
 
     UPDATE_STEPS = 10
     num_epochs = 500
-    print("\nStarting online for GLEPlanner training...")
+    print("\nStarting online training for GLEPlanner...")
+    loss_history = []
+    trajectory_loss_history = []
+    choice_loss_history = []
     for epoch in range(num_epochs):
         model.train()
         running_loss = 0.0
@@ -120,7 +128,7 @@ if __name__ == "__main__":
                 dim=1,
             )
 
-            # Model outputs predicted_trajectory (tensor of shape [batch_size, TRAJECTORY_LEN]) and choice_logits (tensor)
+            # The input `images` are now 4D tensors [batch, channels, height, width]
             with torch.no_grad():
                 for _ in range(UPDATE_STEPS):
                     output = model(images, target, beta=1.0)
@@ -139,8 +147,24 @@ if __name__ == "__main__":
 
         if (epoch + 1) % 10 == 0 or epoch == 0:
             print(f"Epoch {epoch+1}/{num_epochs}, Loss: {running_loss/len(train_loader):.6f}, Trajectory Loss: {running_trajectory_loss/len(train_loader):.6f}, Choice Loss: {running_choice_loss/len(train_loader):.6f}")
+        loss_history.append(running_loss / len(train_loader))
+        trajectory_loss_history.append(running_trajectory_loss / len(train_loader))
+        choice_loss_history.append(running_choice_loss / len(train_loader))
 
     print("\nTraining finished.")
+
+    import matplotlib.pyplot as plt
+    plt.figure(figsize=(10, 6))
+    plt.plot(loss_history, label='Total Loss')
+    plt.plot(trajectory_loss_history, label='Trajectory Loss')
+    plt.plot(choice_loss_history, label='Choice Loss')
+    plt.xlabel('Epoch')
+    plt.ylabel('Loss')
+    plt.title('Training Loss History for GLEPlanner')
+    plt.legend()
+    plt.grid()
+    plt.savefig(os.path.join(EXPERIMENT_DIR, 'results/gle_planner_training_loss.png'), dpi=300)
+    plt.close()
 
     MODEL_SAVE_PATH = os.path.join(EXPERIMENT_DIR, "models/trained_gle_planner.pth")
     torch.save(model.state_dict(), MODEL_SAVE_PATH)

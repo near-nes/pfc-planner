@@ -7,7 +7,6 @@ from torchvision import transforms
 
 from . import utils
 from .ann_planner import ANNPlanner
-from .gle_conv_planner import GLEConvPlanner
 from .gle_planner import GLEPlanner
 from .dataset import RobotArmDataset, get_image_paths_and_labels
 
@@ -84,7 +83,7 @@ if __name__ == '__main__':
     # get which model to evaluate from command line args
     import argparse
     parser = argparse.ArgumentParser(description="Evaluate Planner Models for Robotic Arm")
-    parser.add_argument('--model', type=str, choices=['ann', 'gle', 'gle_conv'], default='gle_conv', help="Model type to evaluate")
+    parser.add_argument('--model', type=str, choices=['ann', 'gle'], default='gle', help="Model type to evaluate")
     args = parser.parse_args()
 
     print("Evaluating Planner models for Robotic Arm...")
@@ -117,15 +116,7 @@ if __name__ == '__main__':
 
     num_choices = 2
 
-    if args.model == 'gle_conv':
-        model = GLEConvPlanner(tau=1.0, dt=0.01, num_choices=num_choices, trajectory_length=TRAJECTORY_LEN)
-        try:
-            model.load_state_dict(torch.load(os.path.join(EXPERIMENT_DIR, 'models/trained_gle_conv_planner.pth')))
-        except FileNotFoundError:
-            print("GLE model file not found. Please ensure the model is trained and saved correctly.")
-            sys.exit(1)
-    elif args.model == 'gle':
-        from .gle_planner import GLEPlanner
+    if args.model == 'gle':
         model = GLEPlanner(tau=1.0, dt=0.01, num_choices=num_choices, trajectory_length=TRAJECTORY_LEN)
         try:
             model.load_state_dict(torch.load(os.path.join(EXPERIMENT_DIR, 'models/trained_gle_planner.pth')))
