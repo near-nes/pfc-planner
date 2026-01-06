@@ -10,7 +10,7 @@ from ..gle.abstract_net import GLEAbstractNet
 from ..gle.dynamics import GLEDynamics
 from ..gle.layers import GLEConv, GLELinear
 from ..gle.utils import get_phi_and_derivative
-from .ann_planner import RobotArmDataset
+from .ann_planner import RobotArmDataset, get_image_paths_and_labels
 from . import utils
 
 
@@ -79,7 +79,7 @@ if __name__ == "__main__":
     print("Using data from:", DATA_DIR)
 
     # Load image data
-    all_image_data = utils.get_image_paths_and_labels(DATA_DIR)
+    all_image_data = get_image_paths_and_labels(DATA_DIR)
     print(f"Loaded {len(all_image_data)} distinct data samples for training.")
     if not all_image_data:
         print("No image data found. Please check DATA_DIR.")
@@ -100,7 +100,7 @@ if __name__ == "__main__":
 
     num_choices = 2
     # Pass trajectory_length to the model
-    model = GLEConvPlanner(tau=1.0, dt=0.01, num_choices=num_choices, trajectory_length=TRAJECTORY_LEN)
+    model = GLEConvPlanner(tau=1.0, dt=0.1, num_choices=num_choices, trajectory_length=TRAJECTORY_LEN)
 
     # MSELoss for the trajectory regression (comparing sequences)
     criterion_trajectory = nn.MSELoss()
@@ -111,6 +111,9 @@ if __name__ == "__main__":
     UPDATE_STEPS = 10
     num_epochs = 500
     print("\nStarting online training for GLEConvPlanner...")
+    loss_history = []
+    trajectory_loss_history = []
+    choice_loss_history = []
     for epoch in range(num_epochs):
         model.train()
         running_loss = 0.0
@@ -144,8 +147,24 @@ if __name__ == "__main__":
 
         if (epoch + 1) % 10 == 0 or epoch == 0:
             print(f"Epoch {epoch+1}/{num_epochs}, Loss: {running_loss/len(train_loader):.6f}, Trajectory Loss: {running_trajectory_loss/len(train_loader):.6f}, Choice Loss: {running_choice_loss/len(train_loader):.6f}")
+        loss_history.append(running_loss / len(train_loader))
+        trajectory_loss_history.append(running_trajectory_loss / len(train_loader))
+        choice_loss_history.append(running_choice_loss / len(train_loader))
 
     print("\nTraining finished.")
+
+    import matplotlib.pyplot as plt
+    plt.figure(figsize=(10, 6))
+    plt.plot(loss_history, label='Total Loss')
+    plt.plot(trajectory_loss_history, label='Trajectory Loss')
+    plt.plot(choice_loss_history, label='Choice Loss')
+    plt.xlabel('Epoch')
+    plt.ylabel('Loss')
+    plt.title('Training Loss History for GLEConvPlanner')
+    plt.legend()
+    plt.grid()
+    plt.savefig(os.path.join(EXPERIMENT_DIR, 'results/gle_conv_planner_training_loss.png'), dpi=300)
+    plt.close()
 
     MODEL_SAVE_PATH = os.path.join(EXPERIMENT_DIR, "models/trained_gle_conv_planner.pth")
     torch.save(model.state_dict(), MODEL_SAVE_PATH)

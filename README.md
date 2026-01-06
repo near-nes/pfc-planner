@@ -28,7 +28,7 @@ python -m submodules.pfc_planner.src.gle_conv_planner
 To test the pretrained and saved GLEConvPlanner model, run:
 
 ```bash
-python -m submodules.pfc_planner.src.evaluate --model='gle_conv_planner'
+python -m submodules.pfc_planner.src.evaluate --model='gle_conv'
 ```
 
 ### Locally
