@@ -45,10 +45,6 @@ def load_task_mapping_from_file(txt_file: str) -> Dict[str, str]:
         raise FileNotFoundError(f"Task mapping text file not found: {txt_file}")
     return mapping
 
-def deg2rad(degrees: float) -> float:
-    """Convert degrees to radians."""
-    return degrees * (3.141592653589793 / 180.0)
-
 def get_image_paths_and_labels(
     data_dir: str,
     initial_elbow_angle: int = INITIAL_ELBOW_ANGLE
@@ -68,14 +64,11 @@ def get_image_paths_and_labels(
         if phase != 'start' or target_final_angle is None or color is None:
             continue
 
-        # Generate the ground truth trajectory programmatically (degrees)
+        # Generate the ground truth trajectory programmatically
         ground_truth = generate_minjerk_trajectory_for_angles(
             start_angle_deg=initial_elbow_angle,
             end_angle_deg=target_final_angle
         )
-
-        # Convert to radians for downstream use
-        ground_truth_rad = deg2rad(np.array(ground_truth)).tolist()
 
         angle_diff = target_final_angle - initial_elbow_angle
 
@@ -85,9 +78,9 @@ def get_image_paths_and_labels(
             'initial_angle': initial_elbow_angle,
             'target_final_angle': target_final_angle,
             'angle_difference': angle_diff,
-            'ground_truth_trajectory': ground_truth_rad,  # radians
+            'ground_truth_trajectory': ground_truth,  # radians
             'target_choice': task_mapping.get(color),
-            'trajectory_len': len(ground_truth_rad)
+            'trajectory_len': len(ground_truth)
         })
 
     return image_data

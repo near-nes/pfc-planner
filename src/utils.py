@@ -52,7 +52,7 @@ def generate_minjerk_trajectory_for_angles(
         resolution=resolution,
     )
 
-    trajectory = generate_trajectory_minjerk(sim_params)
+    trajectory = generate_trajectory_minjerk(sim_params)  # trajectory in radians
 
     traj_arr = np.array(trajectory)
     if traj_arr.ndim == 2 and traj_arr.shape[0] > 0:
