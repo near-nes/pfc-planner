@@ -9,7 +9,6 @@ import torch.nn as nn
 from torchvision import transforms
 from PIL import Image
 
-# Assuming these are available in your project structure
 from .gle.abstract_net import GLEAbstractNet
 from .gle.dynamics import GLEDynamics
 from .gle.layers import GLEConv, GLELinear
@@ -29,6 +28,7 @@ class TrajectoryGenerator(ABC):
             transforms.Resize(self.params.image_size),
             transforms.ToTensor(),
         ])
+        self.model_loaded = False
 
     def load_model(self, model_path: Path):
         if not model_path.exists():
@@ -37,6 +37,7 @@ class TrajectoryGenerator(ABC):
         try:
             self.net.load_state_dict(torch.load(model_path, map_location=self.device))
             self.net.eval()
+            self.model_loaded = True
         except RuntimeError as e:
             print(f"Error loading model. Architecture mismatch or corrupted file.")
             raise e
@@ -101,10 +102,17 @@ class GLEPlannerNet(GLEAbstractNet, nn.Module):
 class ANNPlanner(TrajectoryGenerator):
     """Concrete implementation for the ANN model."""
     def image_to_trajectory(self, img_path: Path) -> Tuple[np.ndarray, str]:
+        if not img_path.exists():
+            raise FileNotFoundError(f"Input image not found at: {img_path}")
+        if not self.model_loaded:
+            raise RuntimeError("Model has not been loaded. Call `load_model()` first.")
+
         input_image = Image.open(img_path).convert("RGB")
         input_tensor = self.image_transform(input_image).unsqueeze(0).to(self.device)
+
         with torch.no_grad():
             output = self.net(input_tensor)
+
         predicted_traj = output[:, :self.params.trajectory_length].squeeze(0).cpu().numpy()
         choice_logits = output[:, self.params.trajectory_length:]
         choice_idx = torch.argmax(choice_logits, dim=1).item()
@@ -113,11 +121,18 @@ class ANNPlanner(TrajectoryGenerator):
 class GLEPlanner(TrajectoryGenerator):
     """Concrete implementation for the GLE model."""
     def image_to_trajectory(self, img_path: Path) -> Tuple[np.ndarray, str]:
+        if not img_path.exists():
+            raise FileNotFoundError(f"Input image not found at: {img_path}")
+        if not self.model_loaded:
+            raise RuntimeError("Model has not been loaded. Call `load_model()` first.")
+
         input_image = Image.open(img_path).convert("RGB")
         input_tensor = self.image_transform(input_image).unsqueeze(0).to(self.device)
+
         with torch.no_grad():
             for _ in range(self.params.gle_update_steps):  # Run multiple steps for GLE convergence
                 output = self.net(input_tensor)
+
         predicted_traj = output[:, :self.params.trajectory_length].squeeze(0).cpu().numpy()
         choice_logits = output[:, self.params.trajectory_length:]
         choice_idx = torch.argmax(choice_logits, dim=1).item()
