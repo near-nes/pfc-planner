@@ -45,10 +45,11 @@ if __name__ == "__main__":
     print("Starting ANN Planner for Robotic Arm...")
     os.makedirs("./models", exist_ok=True)
     os.makedirs("./results", exist_ok=True)
-    # Define your data directory relative to where you run this script
     EXPERIMENT_DIR = "submodules/pfc_planner"
+    if not os.path.exists(EXPERIMENT_DIR):
+        EXPERIMENT_DIR = "./"  # local testing fallback
     DATA_DIR = os.path.join(EXPERIMENT_DIR, "data/")
-    print("Using data from:", DATA_DIR)
+    print("Using data from:", os.path.abspath(DATA_DIR))
 
     image_transform = transforms.Compose([
         transforms.Resize((100, 100)),

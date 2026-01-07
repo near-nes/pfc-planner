@@ -96,8 +96,10 @@ if __name__ == '__main__':
 
     print("Initializing evaluation for Robotic Arm Planners...")
     EXPERIMENT_DIR = "submodules/pfc_planner"
+    if not os.path.exists(EXPERIMENT_DIR):
+        EXPERIMENT_DIR = "./"  # local testing fallback
     DATA_DIR = os.path.join(EXPERIMENT_DIR, "data/")
-    print(f"Using data from: {DATA_DIR}")
+    print("Using data from:", os.path.abspath(DATA_DIR))
 
     image_transform = transforms.Compose([
         transforms.Resize((100, 100)),

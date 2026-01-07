@@ -1,6 +1,6 @@
 import torch
 
-from ..gle.dynamics import GLEDynamics
+from .dynamics import GLEDynamics
 
 
 class GLEAbstractNet:

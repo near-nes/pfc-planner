@@ -31,7 +31,7 @@ python -m submodules.pfc_planner.src.evaluate --model='gle'
 ```
 
 ### Locally
-You can also checkout the `local` branch for running the code outside of the docker container.
+The code can also be run outside of the docker container using a fallback implementation for the minjerk trajectory generator.
 
 Install requirements locally in a virtual environment and activate it:
 
@@ -44,5 +44,5 @@ pip install -r requirements.txt
 Then run the planner module:
 
 ```bash
-python src/gle_conv_planner.py
+python -m src.gle_planner
 ```
