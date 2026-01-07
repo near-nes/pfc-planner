@@ -7,8 +7,7 @@ import os
 import sys
 import matplotlib.pyplot as plt
 
-from . import utils
-from .dataset import RobotArmDataset, get_image_paths_and_labels
+from .dataset import RobotArmDataset
 
 class ANNPlanner(nn.Module):
     def __init__(self, num_choices, trajectory_length):
@@ -47,28 +46,30 @@ if __name__ == "__main__":
     os.makedirs("./models", exist_ok=True)
     os.makedirs("./results", exist_ok=True)
     # Define your data directory relative to where you run this script
-    EXPERIMENT_DIR = "submodules/pfc_planner"  # Make sure this path is correct
+    EXPERIMENT_DIR = "submodules/pfc_planner"
     DATA_DIR = os.path.join(EXPERIMENT_DIR, "data/")
     print("Using data from:", DATA_DIR)
-
-    # Load image data
-    all_image_data = get_image_paths_and_labels(DATA_DIR)
-    print(f"Loaded {len(all_image_data)} distinct data samples for training.")
-    if not all_image_data:
-        print("No image data found. Please check DATA_DIR and filename patterns.")
-        sys.exit(1)
-
-    # Dynamically get trajectory length from the first data sample
-    TRAJECTORY_LEN = all_image_data[0]['trajectory_len']
-    print(f"Detected trajectory length: {TRAJECTORY_LEN}")
 
     image_transform = transforms.Compose([
         transforms.Resize((100, 100)),
         transforms.ToTensor()
     ])
 
-    train_dataset = RobotArmDataset(all_image_data, transform=image_transform)
-    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=len(all_image_data), shuffle=True) # Use full batch for this small dataset
+    train_dataset = RobotArmDataset(data_dir=DATA_DIR, transform=image_transform)
+
+    if len(train_dataset) == 0:
+        print("No image data found. Please check DATA_DIR and filename patterns.")
+        sys.exit(1)
+
+    print(f"Loaded {len(train_dataset)} distinct data samples for training.")
+
+    # The trajectory is the second element of the tuple returned by __getitem__
+    TRAJECTORY_LEN = len(train_dataset[0][1])
+    print(f"Detected trajectory length: {TRAJECTORY_LEN}")
+
+    all_image_data = train_dataset.task_data
+
+    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=len(train_dataset), shuffle=True)
 
     num_choices = 2
     # Pass trajectory_length to the model
@@ -115,4 +116,5 @@ if __name__ == "__main__":
     print(f"Model saved to {MODEL_SAVE_PATH}")
 
     from .evaluate import evaluate_model
-    evaluate_model(model, train_loader, all_image_data, path_prefix=EXPERIMENT_DIR)
+    eval_loader = torch.utils.data.DataLoader(train_dataset, batch_size=len(train_dataset), shuffle=False)
+    evaluate_model(model, eval_loader, all_image_data, path_prefix=EXPERIMENT_DIR)

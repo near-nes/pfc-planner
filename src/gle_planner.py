@@ -5,13 +5,13 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torchvision import transforms
+import matplotlib.pyplot as plt
 
 from ..gle.abstract_net import GLEAbstractNet
 from ..gle.dynamics import GLEDynamics
 from ..gle.layers import GLEConv, GLELinear
 from ..gle.utils import get_phi_and_derivative
-from .dataset import RobotArmDataset, get_image_paths_and_labels
-from . import utils
+from .dataset import RobotArmDataset
 
 
 class GLEPlanner(GLEAbstractNet, torch.nn.Module):
@@ -37,28 +37,14 @@ class GLEPlanner(GLEAbstractNet, torch.nn.Module):
         self.fc = GLELinear(self.conv_output_size, trajectory_length + num_choices)
 
         # Dynamics for each layer
-        self.conv1_dyn = GLEDynamics(
-            self.conv1,
-            tau_m=self.tau,
-            dt=self.dt,
-            phi=self.phi,
-            phi_prime=self.phi_prime,
-        )
-        self.conv2_dyn = GLEDynamics(
-            self.conv2,
-            tau_m=self.tau,
-            dt=self.dt,
-            phi=self.phi,
-            phi_prime=self.phi_prime,
-        )
+        self.conv1_dyn = GLEDynamics(self.conv1, tau_m=self.tau, dt=self.dt, phi=self.phi, phi_prime=self.phi_prime)
+        self.conv2_dyn = GLEDynamics(self.conv2, tau_m=self.tau, dt=self.dt, phi=self.phi, phi_prime=self.phi_prime)
         self.fc_dyn = GLEDynamics(self.fc, tau_m=self.tau, dt=self.dt)
 
     def compute_target_error(self, output, target, beta):
         e = torch.zeros_like(output)
         # MSE for trajectory part
-        e[:, : self.trajectory_length] = 0.001 * (
-            target[:, : self.trajectory_length] - output[:, : self.trajectory_length]
-        )
+        e[:, : self.trajectory_length] = 0.001 * (target[:, : self.trajectory_length] - output[:, : self.trajectory_length])
         # CE for choice part
         # convert logits to probabilities
         choice_probs = torch.softmax(output[:, self.trajectory_length :], dim=1)
@@ -73,30 +59,29 @@ if __name__ == "__main__":
     print("Starting GLE Planner for Robotic Arm...")
     os.makedirs("./models", exist_ok=True)
     os.makedirs("./results", exist_ok=True)
-    # Define your data directory relative to where you run this script
     EXPERIMENT_DIR = "submodules/pfc_planner"
     DATA_DIR = os.path.join(EXPERIMENT_DIR, "data/")
     print("Using data from:", DATA_DIR)
 
-    # Load image data
-    all_image_data = get_image_paths_and_labels(DATA_DIR)
-    print(f"Loaded {len(all_image_data)} distinct data samples for training.")
-    if not all_image_data:
-        print("No image data found. Please check DATA_DIR.")
-        sys.exit(1)
-
-    # Dynamically get trajectory length from the first data sample
-    TRAJECTORY_LEN = all_image_data[0]['trajectory_len']
-    print(f"Detected trajectory length: {TRAJECTORY_LEN}")
-
-    # Image transform without flattening
     image_transform = transforms.Compose([
         transforms.Resize((100, 100)),
         transforms.ToTensor()
     ])
 
-    train_dataset = RobotArmDataset(all_image_data, transform=image_transform)
-    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=len(all_image_data), shuffle=True) # Use full batch for this small dataset
+    train_dataset = RobotArmDataset(data_dir=DATA_DIR, transform=image_transform)
+    
+    if len(train_dataset) == 0:
+        print("No image data found. Please check DATA_DIR.")
+        sys.exit(1)
+        
+    print(f"Loaded {len(train_dataset)} distinct data samples for training.")
+
+    TRAJECTORY_LEN = len(train_dataset[0][1])
+    print(f"Detected trajectory length: {TRAJECTORY_LEN}")
+
+    all_image_data = train_dataset.task_data
+
+    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=len(train_dataset), shuffle=True)
 
     num_choices = 2
     # Pass trajectory_length to the model
@@ -153,7 +138,6 @@ if __name__ == "__main__":
 
     print("\nTraining finished.")
 
-    import matplotlib.pyplot as plt
     plt.figure(figsize=(10, 6))
     plt.plot(loss_history, label='Total Loss')
     plt.plot(trajectory_loss_history, label='Trajectory Loss')
@@ -171,4 +155,5 @@ if __name__ == "__main__":
     print(f"Model saved to {MODEL_SAVE_PATH}")
 
     from .evaluate import evaluate_model
-    evaluate_model(model, train_loader, all_image_data, path_prefix=EXPERIMENT_DIR)
+    eval_loader = torch.utils.data.DataLoader(train_dataset, batch_size=len(train_dataset), shuffle=False)
+    evaluate_model(model, eval_loader, all_image_data, path_prefix=EXPERIMENT_DIR)
