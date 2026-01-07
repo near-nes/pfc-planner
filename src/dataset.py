@@ -8,6 +8,8 @@ import numpy as np
 from PIL import Image
 import torch
 
+from .config import PlannerParams
+
 # Path to the external controller package
 _CONTROLLER_PATH = os.environ.get("CONTROLLER_PATH", "/sim/controller/complete_control")
 
@@ -33,24 +35,13 @@ except ImportError as e:
 class RobotArmDataset(torch.utils.data.Dataset):
     """
     Dataset for robot arm control, loading images and generating ground-truth trajectories.
-
-    This dataset parses image filenames to determine task parameters, generates minimum-jerk
-    trajectories on the fly, and provides tensors ready for model training. The ground-truth
-    trajectory is provided in RADIANS.
-
-    Args:
-        data_dir (str): Path to the directory with 'start_*.bmp' images and 'task_diff.txt'.
-        transform (Optional[Callable]): A function/transform to apply to the images.
-        initial_elbow_angle_deg (int): The starting angle of the arm in degrees.
     """
-    def __init__(self, data_dir: str, transform: Optional[Callable] = None, initial_elbow_angle_deg: int = 90):
+    def __init__(self, data_dir: str, params: PlannerParams, transform: Optional[Callable] = None):
         super().__init__()
         self.data_dir = data_dir
+        self.params = params
         self.transform = transform
-        self.initial_elbow_angle_deg = initial_elbow_angle_deg
         self.choice_to_idx = {'left': 0, 'right': 1}
-
-        # Load and process all task data upon initialization
         self.task_data = self._load_all_task_data()
 
     def __len__(self) -> int:
@@ -90,24 +81,32 @@ class RobotArmDataset(torch.utils.data.Dataset):
 
         for img_path in image_files:
             phase, target_angle_deg, color = self._parse_filename(img_path)
-
             if phase != 'start' or target_angle_deg is None or color is None:
                 continue
 
             # Generate ground truth trajectory, which will be in RADIANS
             trajectory_rad = self._generate_minjerk_trajectory_in_radians(
-                start_angle_deg=self.initial_elbow_angle_deg,
+                start_angle_deg=self.params.initial_elbow_angle_deg,
                 end_angle_deg=target_angle_deg
             )
 
             task_data.append({
                 'image_path': img_path,
                 'color': color,
-                'initial_angle_deg': self.initial_elbow_angle_deg,
+                'initial_angle_deg': self.params.initial_elbow_angle_deg,
                 'target_final_angle_deg': target_angle_deg,
                 'ground_truth_trajectory_rad': trajectory_rad,  # Explicitly RADIANS
                 'target_choice': task_mapping.get(color, 'unknown'),
             })
+
+        # Ensure all trajectories have the same length as defined in params
+        if task_data and len(task_data[0]['ground_truth_trajectory_rad']) != self.params.trajectory_length:
+            warnings.warn(
+                f"Trajectory length mismatch! "
+                f"Generated: {len(task_data[0]['ground_truth_trajectory_rad'])}, "
+                f"Params: {self.params.trajectory_length}. "
+                f"Please check simulation parameters in config.py."
+            )
 
         return task_data
 
@@ -139,27 +138,23 @@ class RobotArmDataset(torch.utils.data.Dataset):
             raise FileNotFoundError(f"Task mapping file not found: {txt_file}")
         return mapping
 
-    @staticmethod
     def _generate_minjerk_trajectory_in_radians(
-        start_angle_deg: float,
-        end_angle_deg: float
+        self, start_angle_deg: float, end_angle_deg: float
     ) -> List[float]:
         """
-        Generates a min-jerk trajectory using the imported controller library.
-
-        NOTE: This function accepts angles in DEGREES for convenience but returns the
-        trajectory in RADIANS, as that is the standard for the underlying physics library.
+        Generates a min-jerk trajectory using the imported controller library
+        based on simulation parameters from the params object.
         """
         oracle_data = OracleData(init_joint_angle=start_angle_deg, tgt_joint_angle=end_angle_deg)
         sim_params = SimulationParams(
             oracle=oracle_data,
-            time_prep=150.0,
-            time_move=500.0,
-            time_grasp=0.0,
-            time_post=0.0,
+            time_prep=self.params.time_prep,
+            time_move=self.params.time_move,
+            time_grasp=self.params.time_grasp,
+            time_post=self.params.time_post,
             n_trials=1,
             frozen=False,
-            resolution=0.1,
+            resolution=self.params.resolution,
         )
 
         # The external `generate_trajectory_minjerk` function returns the trajectory in RADIANS

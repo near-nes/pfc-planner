@@ -9,14 +9,17 @@ import matplotlib.pyplot as plt
 
 from .planners import ANNPlanner, GLEPlanner, ANNPlannerNet, GLEPlannerNet
 from .dataset import RobotArmDataset
+from .config import default_params
 
 def main():
     """Main function to handle model evaluation."""
     parser = argparse.ArgumentParser(description="Evaluate Planner Models for Robotic Arm")
-    parser.add_argument('--model', type=str, choices=['ann', 'gle'], default='gle', help="Model type to evaluate")
+    parser.add_argument('--model', type=str, choices=['ann', 'gle'], default=default_params.model_type, help="Model type to evaluate")
     args = parser.parse_args()
 
-    print(f"--- Initializing Evaluation for {args.model.upper()} Planner ---")
+    # Update model type in params based on argument
+    params = default_params
+    params.model_type = args.model
 
     from .train import get_project_root
     PROJECT_ROOT = get_project_root()
@@ -27,21 +30,18 @@ def main():
 
     RESULTS_DIR.mkdir(exist_ok=True)
 
-    eval_dataset = RobotArmDataset(data_dir=str(DATA_DIR))
+    eval_dataset = RobotArmDataset(data_dir=str(DATA_DIR), params=params)
     if not eval_dataset.task_data:
         sys.exit(f"ERROR: No data found in {DATA_DIR}. Exiting.")
 
-    all_image_data = eval_dataset.task_data
-    TRAJECTORY_LEN = len(all_image_data[0]['ground_truth_trajectory_rad'])
-    print(f"Loaded {len(all_image_data)} samples. Trajectory length: {TRAJECTORY_LEN}")
+    print(f"Loaded {len(eval_dataset)} samples. Trajectory length: {params.trajectory_length}")
 
-    num_choices = 2
     if args.model == 'ann':
-        net = ANNPlannerNet(num_choices=num_choices, trajectory_length=TRAJECTORY_LEN)
-        planner = ANNPlanner(net=net)
+        net = ANNPlannerNet(params=params)
+        planner = ANNPlanner(params=params, net=net)
     else: # gle
-        net = GLEPlannerNet(tau=1.0, dt=0.1, num_choices=num_choices, trajectory_length=TRAJECTORY_LEN)
-        planner = GLEPlanner(net=net)
+        net = GLEPlannerNet(params=params)
+        planner = GLEPlanner(params=params, net=net)
 
     model_path = MODELS_DIR / f"trained_{args.model}_planner.pth"
     try:
@@ -50,10 +50,10 @@ def main():
         sys.exit(f"ERROR: Model not found at {model_path}. Please train it first.")
 
     correct_choices, correct_angles = 0, 0
-    for item_metadata in all_image_data:
+    for item_metadata in eval_dataset.task_data:
         image_path = Path(item_metadata['image_path'])
 
-        predicted_trajectory, predicted_choice = planner.plan_from_image(image_path, TRAJECTORY_LEN)
+        predicted_trajectory, predicted_choice = planner.image_to_trajectory(image_path)
 
         if predicted_choice == item_metadata['target_choice']:
             correct_choices += 1
@@ -68,8 +68,8 @@ def main():
         plt.savefig(RESULTS_DIR / f"{image_path.stem}_trajectory.png")
         plt.close()
 
-    choice_accuracy = (correct_choices / len(all_image_data)) * 100
-    angle_accuracy = (correct_angles / len(all_image_data)) * 100
+    choice_accuracy = (correct_choices / len(eval_dataset)) * 100
+    angle_accuracy = (correct_angles / len(eval_dataset)) * 100
     print(f"\n--- Evaluation Complete ---")
     print(f"Choice Accuracy: {choice_accuracy:.2f}%")
     print(f"Final Angle Accuracy (within 1 degree): {angle_accuracy:.2f}%")
