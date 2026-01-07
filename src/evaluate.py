@@ -1,146 +1,79 @@
 #!/usr/bin/env python3
-import os
 import sys
+import argparse
+from pathlib import Path
+
 import torch
 import numpy as np
-from torchvision import transforms
 import matplotlib.pyplot as plt
 
-from .ann_planner import ANNPlanner
-from .gle_planner import GLEPlanner
+from .planners import ANNPlanner, GLEPlanner, ANNPlannerNet, GLEPlannerNet
 from .dataset import RobotArmDataset
 
-def evaluate_model(model, eval_loader, all_image_data, path_prefix=""):
-    """
-    Evaluates the model's performance on choice and trajectory prediction.
-    """
-    print(f"\n--- Evaluating Model: {model.__class__.__name__} ---")
-    model.eval()
-    correct_choices = 0
-    correct_angles = 0
-
-    # Create the results directory for saving plots
-    results_dir = os.path.join(path_prefix, "results")
-    os.makedirs(results_dir, exist_ok=True)
-
-    with torch.no_grad():
-        # We assume one large batch for evaluation, as in the main script
-        images, true_trajectory, true_choice_idx = next(iter(eval_loader))
-
-        # Determine trajectory length from the data itself
-        TRAJECTORY_LEN = true_trajectory.shape[1]
-
-        for k in range(len(all_image_data)):
-            # Get single items for evaluation
-            single_image = images[k].unsqueeze(0)
-            single_true_trajectory = true_trajectory[k]
-            single_true_choice_idx = true_choice_idx[k]
-
-            # Get the corresponding metadata for this item
-            item_metadata = all_image_data[k]
-
-            # For GLE models, multiple forward passes might be needed for the state to settle
-            if isinstance(model, GLEPlanner):
-                for _ in range(10): # Settle the network state
-                    output = model(single_image, beta=0.0) # In inference, beta is 0
-            else: # For ANN, a single forward pass is enough
-                output = model(single_image)
-
-            # Split the model output into trajectory and choice predictions
-            predicted_trajectory_tensor = output[:, :TRAJECTORY_LEN]
-            pred_choice_logits = output[:, TRAJECTORY_LEN:]
-
-            predicted_trajectory = predicted_trajectory_tensor.squeeze(0).cpu().numpy()
-            _, predicted_choice_idx = torch.max(pred_choice_logits, 1)
-
-            correct_choices += (predicted_choice_idx.item() == single_true_choice_idx.item())
-            # Check if the final predicted angle is within 1 degree of the true final angle
-            is_close = np.isclose(
-                predicted_trajectory[-1],
-                single_true_trajectory[-1].item(),
-                atol=np.deg2rad(1.0) # tolerance of 1 degree, converted to radians
-            )
-            correct_angles += is_close
-
-            # Plotting the trajectories
-            plt.figure(figsize=(10, 6))
-            # Convert trajectories from radians to degrees for plotting
-            plt.plot(np.rad2deg(single_true_trajectory.cpu().numpy()), label='True Trajectory', color='blue', linewidth=2)
-            plt.plot(np.rad2deg(predicted_trajectory), label='Predicted Trajectory', color='red', linestyle='--')
-
-            # Use new dictionary keys for metadata
-            plot_title = f"Trajectory for {os.path.basename(item_metadata['image_path'])}"
-            plt.title(plot_title)
-            plt.xlabel("Time Step")
-            plt.ylabel("Elbow Angle (degrees)")
-            plt.legend()
-            plt.grid(True)
-
-            # Save the plot
-            plot_filename = f"{os.path.basename(item_metadata['image_path']).removesuffix('.bmp')}_trajectory.png"
-            plt.savefig(os.path.join(results_dir, plot_filename))
-            plt.close()
-
-    choice_accuracy = correct_choices / len(all_image_data)
-    angle_accuracy = correct_angles / len(all_image_data)
-    print(f"Overall Choice Prediction Accuracy: {choice_accuracy*100:.2f}%")
-    print(f"Final Angle Accuracy (within 1 degree): {angle_accuracy*100:.2f}%")
-    print(f"Plots saved to '{results_dir}'")
-
-
-if __name__ == '__main__':
-    import argparse
+def main():
+    """Main function to handle model evaluation."""
     parser = argparse.ArgumentParser(description="Evaluate Planner Models for Robotic Arm")
     parser.add_argument('--model', type=str, choices=['ann', 'gle'], default='gle', help="Model type to evaluate")
     args = parser.parse_args()
 
-    print("Initializing evaluation for Robotic Arm Planners...")
-    EXPERIMENT_DIR = "submodules/pfc_planner"
-    if not os.path.exists(EXPERIMENT_DIR):
-        EXPERIMENT_DIR = "./"  # local testing fallback
-    DATA_DIR = os.path.join(EXPERIMENT_DIR, "data/")
-    print("Using data from:", os.path.abspath(DATA_DIR))
+    print(f"--- Initializing Evaluation for {args.model.upper()} Planner ---")
 
-    image_transform = transforms.Compose([
-        transforms.Resize((100, 100)),
-        transforms.ToTensor()
-    ])
+    from .train import get_project_root
+    PROJECT_ROOT = get_project_root()
 
-    # The dataset now handles loading and processing internally.
-    eval_dataset = RobotArmDataset(data_dir=DATA_DIR, transform=image_transform)
+    DATA_DIR = PROJECT_ROOT / "data"
+    MODELS_DIR = PROJECT_ROOT / "models"
+    RESULTS_DIR = PROJECT_ROOT / "results"
 
+    RESULTS_DIR.mkdir(exist_ok=True)
+
+    eval_dataset = RobotArmDataset(data_dir=str(DATA_DIR))
     if not eval_dataset.task_data:
-        print("No image data found. Please check the DATA_DIR path and filename patterns.")
-        sys.exit(1)
+        sys.exit(f"ERROR: No data found in {DATA_DIR}. Exiting.")
 
     all_image_data = eval_dataset.task_data
     TRAJECTORY_LEN = len(all_image_data[0]['ground_truth_trajectory_rad'])
-
-    print(f"Loaded {len(all_image_data)} data samples.")
-    print(f"Detected trajectory length: {TRAJECTORY_LEN}")
-
-    # IMPORTANT: shuffle=False is critical for aligning plots with filenames.
-    eval_loader = torch.utils.data.DataLoader(eval_dataset, batch_size=len(all_image_data), shuffle=False)
+    print(f"Loaded {len(all_image_data)} samples. Trajectory length: {TRAJECTORY_LEN}")
 
     num_choices = 2
+    if args.model == 'ann':
+        net = ANNPlannerNet(num_choices=num_choices, trajectory_length=TRAJECTORY_LEN)
+        planner = ANNPlanner(net=net)
+    else: # gle
+        net = GLEPlannerNet(tau=1.0, dt=0.1, num_choices=num_choices, trajectory_length=TRAJECTORY_LEN)
+        planner = GLEPlanner(net=net)
 
-    # Load the specified model
-    if args.model == 'gle':
-        model = GLEPlanner(tau=1.0, dt=0.01, num_choices=num_choices, trajectory_length=TRAJECTORY_LEN)
-        model_path = os.path.join(EXPERIMENT_DIR, 'models/trained_gle_planner.pth')
-    elif args.model == 'ann':
-        model = ANNPlanner(num_choices=num_choices, trajectory_length=TRAJECTORY_LEN)
-        model_path = os.path.join(EXPERIMENT_DIR, 'models/trained_ann_planner.pth')
-
+    model_path = MODELS_DIR / f"trained_{args.model}_planner.pth"
     try:
-        model.load_state_dict(torch.load(model_path))
-        print(f"Successfully loaded trained model from {model_path}")
+        planner.load_model(model_path)
     except FileNotFoundError:
-        print(f"ERROR: Model file not found at {model_path}.")
-        print("Please ensure the model is trained and saved correctly before evaluation.")
-        sys.exit(1)
+        sys.exit(f"ERROR: Model not found at {model_path}. Please train it first.")
 
-    # Run the evaluation
-    evaluate_model(model, eval_loader, all_image_data, path_prefix=EXPERIMENT_DIR)
+    correct_choices, correct_angles = 0, 0
+    for item_metadata in all_image_data:
+        image_path = Path(item_metadata['image_path'])
 
-    print("\nEvaluation finished.")
+        predicted_trajectory, predicted_choice = planner.plan_from_image(image_path, TRAJECTORY_LEN)
+
+        if predicted_choice == item_metadata['target_choice']:
+            correct_choices += 1
+        if np.isclose(predicted_trajectory[-1], item_metadata['ground_truth_trajectory_rad'][-1], atol=np.deg2rad(1.0)):
+            correct_angles += 1
+
+        plt.figure(figsize=(10, 6))
+        plt.plot(np.rad2deg(item_metadata['ground_truth_trajectory_rad']), label='True', color='blue')
+        plt.plot(np.rad2deg(predicted_trajectory), label='Predicted', color='red', linestyle='--')
+        plt.title(f"Trajectory for {image_path.name}"); plt.xlabel("Time Step"); plt.ylabel("Angle (deg)")
+        plt.legend(); plt.grid(True)
+        plt.savefig(RESULTS_DIR / f"{image_path.stem}_trajectory.png")
+        plt.close()
+
+    choice_accuracy = (correct_choices / len(all_image_data)) * 100
+    angle_accuracy = (correct_angles / len(all_image_data)) * 100
+    print(f"\n--- Evaluation Complete ---")
+    print(f"Choice Accuracy: {choice_accuracy:.2f}%")
+    print(f"Final Angle Accuracy (within 1 degree): {angle_accuracy:.2f}%")
+    print(f"Plots saved to '{RESULTS_DIR.resolve()}'")
+
+if __name__ == '__main__':
+    main()
