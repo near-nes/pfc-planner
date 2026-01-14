@@ -13,24 +13,40 @@ This simplified version focuses on movements from a 90° starting position to ei
 
 Currently, there are two planners implemented:
 - **ANNPlanner**: An ANN-based planner that uses a CNN + MLP architecture to process the input image and generate the trajectory and decision. This serves as a baseline for the GLEPlanner.
-- **GLEPlanner**: A planner that uses GLE dynamics and learning to generate the trajectory and make decisions.
+- **GLEPlanner**: A planner with similar architecture than the ANN planner taht uses GLE dynamics and learning to generate the trajectory and make decisions.
 
 ## How to use
 
-Install the required dependencies using pip:
+### Inside the Docker Container
+The code in this repository is supposed to be run from within [near-nes/controller](https://github.com/near-nes/controller) docker container's project root `/sim/controller` via:
 
 ```bash
-pip install -r requirements.txt
+python -m submodules.pfc_planner.src.train --model gle
 ```
 
-Run the planner with the following command:
+To test the pretrained and saved GLEPlanner model, run:
 
 ```bash
-python gle_planner.py
+python -m submodules.pfc_planner.src.evaluate --model gle
 ```
 
-Alternatively, use the provided Jupyter Notebook for interactive exploration, for example:
+### Locally
+The code can also be run outside of the docker container using a fallback implementation for the minjerk trajectory generator.
+
+Install requirements locally in a virtual environment and activate it:
 
 ```bash
-jupyter notebook gle_planner.ipynb
+uv venv
+uv pip install -r requirements.txt
+source .venv/bin/activate
+```
+
+Then run train the GLEPlanner outside of the docker container with:
+```bash
+python -m src.train --model gle
+```
+
+To test the pretrained and saved GLEPlanner model locally, run:
+```bash
+python -m src.evaluate --model gle
 ```
