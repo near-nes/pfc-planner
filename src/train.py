@@ -2,7 +2,7 @@ import sys
 import argparse
 import json
 import subprocess
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
 from pathlib import Path
 
 import torch
@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 
 from .planners import ANNPlannerNet, GLEPlannerNet
 from .dataset import RobotArmDataset
-from .config import default_params
+from .config import PlannerParams, default_params
 
 def get_project_root() -> Path:
     """
@@ -22,9 +22,11 @@ def get_project_root() -> Path:
     """
     primary_path = Path("submodules/pfc_planner")
     if primary_path.exists() and primary_path.is_dir():
+        # Use the submodule path if it exists
         print(f"Using primary project path: {primary_path.resolve()}")
         return primary_path.resolve()
     else:
+        # Fallback to the current directory for standalone execution
         print("WARNING: Primary project path not found. Using current directory as project root.")
         return Path(".").resolve()
 
@@ -41,20 +43,10 @@ def get_git_commit_hash() -> str:
         return "N/A"
 
 
-def main():
-    """Main function to handle training of a selected planner model."""
-    parser = argparse.ArgumentParser(description="Train Planner Models for Robotic Arm")
-    parser.add_argument('--model', type=str, choices=['ann', 'gle'], default=default_params.model_type, help="Model type to train")
-    args = parser.parse_args()
-
-    # Update model type in params based on argument
-    params = default_params
-    params.model_type = args.model
-
-    # Get and set the current git commit hash
-    params.git_commit = get_git_commit_hash()
-
-
+def run_training(params: PlannerParams):
+    """
+    Runs the training process for a given set of parameters.
+    """
     print(f"--- Starting Training for {params.model_type.upper()} Planner (Git commit: {params.git_commit}) ---")
 
     PROJECT_ROOT = get_project_root()
@@ -71,7 +63,10 @@ def main():
         transforms.Resize(params.image_size), transforms.ToTensor()
     ]))
 
-    if len(train_dataset) == 0: sys.exit(f"ERROR: No data found in {DATA_DIR}. Exiting.")
+    if len(train_dataset) == 0:
+        print(f"ERROR: No data found in {DATA_DIR}. Aborting training.")
+        return
+
     print(f"Loaded {len(train_dataset)} samples. Trajectory length: {params.trajectory_length}")
 
     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=len(train_dataset), shuffle=True)
@@ -144,6 +139,19 @@ def main():
     plt.savefig(RESULTS_DIR / f'{params.model_type}_planner_training_loss.png')
     plt.close()
     print(f"Training plot saved to {RESULTS_DIR}")
+
+
+def main():
+    """Main function to handle training of a selected planner model."""
+    parser = argparse.ArgumentParser(description="Train Planner Models for Robotic Arm")
+    parser.add_argument('--model', type=str, choices=['ann', 'gle'], default=default_params.model_type, help="Model type to train")
+    args = parser.parse_args()
+
+    params = default_params
+    params.model_type = args.model
+    params.git_commit = get_git_commit_hash()
+
+    run_training(params)
 
 if __name__ == "__main__":
     main()
