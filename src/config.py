@@ -29,6 +29,9 @@ class PlannerParams:
     num_epochs: int = 500
     gle_update_steps: int = 10
 
+    # --- Tracking & Reproducibility ---
+    git_commit: str = "N/A"  # To store the git commit hash
+
     # --- Derived/Calculated Parameters ---
     # This is calculated dynamically, but can be set if known.
     trajectory_length: int = 0

@@ -1,5 +1,8 @@
 import sys
 import argparse
+import json
+import subprocess
+from dataclasses import asdict
 from pathlib import Path
 
 import torch
@@ -19,13 +22,24 @@ def get_project_root() -> Path:
     """
     primary_path = Path("submodules/pfc_planner")
     if primary_path.exists() and primary_path.is_dir():
-        # Use the submodule path if it exists
         print(f"Using primary project path: {primary_path.resolve()}")
         return primary_path.resolve()
     else:
-        # Fallback to the current directory for standalone execution
         print("WARNING: Primary project path not found. Using current directory as project root.")
         return Path(".").resolve()
+
+def get_git_commit_hash() -> str:
+    """Gets the current git commit hash."""
+    try:
+        commit_hash = subprocess.check_output(
+            ['git', 'rev-parse', '--short', 'HEAD'],
+            stderr=subprocess.PIPE
+        ).decode('utf-8').strip()
+        return commit_hash
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        print("WARNING: Could not determine git commit hash. Not a git repository or git is not installed.")
+        return "N/A"
+
 
 def main():
     """Main function to handle training of a selected planner model."""
@@ -37,7 +51,11 @@ def main():
     params = default_params
     params.model_type = args.model
 
-    print(f"--- Starting Training for {params.model_type.upper()} Planner ---")
+    # Get and set the current git commit hash
+    params.git_commit = get_git_commit_hash()
+
+
+    print(f"--- Starting Training for {params.model_type.upper()} Planner (Git commit: {params.git_commit}) ---")
 
     PROJECT_ROOT = get_project_root()
     DATA_DIR = PROJECT_ROOT / "data"
@@ -109,8 +127,16 @@ def main():
 
     print("\n--- Training Finished ---")
     model_save_path = MODELS_DIR / f"trained_{params.model_type}_planner.pth"
+    config_save_path = MODELS_DIR / f"trained_{params.model_type}_planner.json"
+
+    # Save model weights
     torch.save(net.state_dict(), model_save_path)
     print(f"Model saved to {model_save_path}")
+
+    # Save configuration to JSON
+    with open(config_save_path, 'w') as f:
+        json.dump(asdict(params), f, indent=4)
+    print(f"Configuration saved to {config_save_path}")
 
     plt.figure(figsize=(10, 6))
     plt.plot(loss_history, label='Total Loss'); plt.plot(traj_loss_history, label='Trajectory Loss'); plt.plot(choice_loss_history, label='Choice Loss')
