@@ -30,12 +30,13 @@ def get_project_root() -> Path:
         print("WARNING: Primary project path not found. Using current directory as project root.")
         return Path(".").resolve()
 
-def get_git_commit_hash() -> str:
-    """Gets the current git commit hash."""
+def get_git_commit_hash(project_root: Path) -> str:
+    """Gets the current git commit hash from the project root directory."""
     try:
         commit_hash = subprocess.check_output(
             ['git', 'rev-parse', '--short', 'HEAD'],
-            stderr=subprocess.PIPE
+            stderr=subprocess.PIPE,
+            cwd=project_root
         ).decode('utf-8').strip()
         return commit_hash
     except (subprocess.CalledProcessError, FileNotFoundError):
@@ -147,9 +148,10 @@ def main():
     parser.add_argument('--model', type=str, choices=['ann', 'gle'], default=default_params.model_type, help="Model type to train")
     args = parser.parse_args()
 
+    project_root = get_project_root()
     params = default_params
     params.model_type = args.model
-    params.git_commit = get_git_commit_hash()
+    params.git_commit = get_git_commit_hash(project_root)
 
     run_training(params)
 

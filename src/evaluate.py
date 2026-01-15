@@ -4,7 +4,7 @@ import argparse
 import json
 import subprocess
 import dataclasses
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
 from pathlib import Path
 
 import torch
@@ -17,11 +17,11 @@ from .config import default_params, PlannerParams
 from .train import get_project_root, get_git_commit_hash, run_training
 
 
-def verify_or_get_params(model_type: str, models_dir: Path, current_params: PlannerParams) -> PlannerParams:
+def verify_or_get_params(model_type: str, models_dir: Path, current_params: PlannerParams, project_root: Path) -> PlannerParams:
     """
     Checks for a consistent, existing model configuration.
     - If consistent, returns the params.
-    - If inconsistent or files are missing, returns None to signal retraining.
+    - If inconsistent or files are missing, triggers retraining by returning None.
     """
     config_path = models_dir / f"trained_{model_type}_planner.json"
     model_path = models_dir / f"trained_{model_type}_planner.pth"
@@ -34,30 +34,35 @@ def verify_or_get_params(model_type: str, models_dir: Path, current_params: Plan
     with open(config_path, 'r') as f:
         saved_params_dict = json.load(f)
 
-    # Normalize image_size to tuple for comparison
+    # Normalize image_size for consistent comparison
     if 'image_size' in saved_params_dict and isinstance(saved_params_dict['image_size'], list):
         saved_params_dict['image_size'] = tuple(saved_params_dict['image_size'])
 
-    # Set the current git commit on the params we are comparing against
-    current_params.git_commit = get_git_commit_hash()
+    # Get the current parameters and git hash
+    current_params.git_commit = get_git_commit_hash(project_root)
     current_params_dict = asdict(current_params)
 
-    # Compare dictionaries
-    if saved_params_dict == current_params_dict:
+    # Exclude 'git_commit' from the check because committing the model would change it.
+    # The saved git_commit is for traceability, not for triggering retraining.
+    keys_to_compare = [k for k in current_params_dict.keys() if k != 'git_commit']
+
+    mismatch = False
+    for key in keys_to_compare:
+        if saved_params_dict.get(key) != current_params_dict.get(key):
+            print(f"  - Mismatch on '{key}': Saved='{saved_params_dict.get(key)}', Current='{current_params_dict.get(key)}'")
+            mismatch = True
+
+    if not mismatch:
         print("Configuration verified successfully.")
-        return current_params
+        # Return the params loaded from the file, as they are the "ground truth"
+        return dataclasses.replace(current_params, **saved_params_dict)
     else:
         print("\n" + "="*80)
-        print("WARNING: Configuration mismatch detected!")
-        print(f"  - Code version used for training: {saved_params_dict.get('git_commit', 'N/A')}")
-        print(f"  - Current code version:           {current_params_dict.get('git_commit', 'N/A')}")
-        print("Mismatched parameters:")
-        for key in saved_params_dict:
-            if key in current_params_dict and saved_params_dict[key] != current_params_dict[key]:
-                print(f"  - '{key}': Saved='{saved_params_dict[key]}', Current='{current_params_dict[key]}'")
+        print("WARNING: Configuration mismatch detected! The model's defining parameters have changed.")
+        print(f"  - Code version during original training: {saved_params_dict.get('git_commit', 'N/A')}")
+        print(f"  - Current code version:                  {current_params.git_commit}")
         print("="*80 + "\n")
-        # Trigger retraining
-        return None
+        return None # Trigger retraining
 
 
 def main():
@@ -73,19 +78,17 @@ def main():
     current_params.model_type = args.model
     # git_commit will be set during verification
 
-    # This function now handles all checks: existence and consistency
-    verified_params = verify_or_get_params(args.model, MODELS_DIR, current_params)
+    verified_params = verify_or_get_params(args.model, MODELS_DIR, current_params, PROJECT_ROOT)
 
-    # If verification failed for any reason (missing files or mismatch), retrain.
     if verified_params is None:
         print("Triggering model retraining...")
-        current_params.git_commit = get_git_commit_hash() # Ensure commit is set before training
+        # We need to ensure the git_commit is set on the params object used for training
+        current_params.git_commit = get_git_commit_hash(PROJECT_ROOT)
         run_training(current_params)
         print("\n--- Retraining complete. Proceeding with evaluation of the new model. ---")
-        # After training, the current parameters are the verified ones.
         verified_params = current_params
 
-    # --- Proceed with evaluation using the verified (or newly trained) parameters ---
+    # --- Proceed with evaluation ---
     DATA_DIR = PROJECT_ROOT / "data"
     RESULTS_DIR = PROJECT_ROOT / "results"
     RESULTS_DIR.mkdir(exist_ok=True)
@@ -124,7 +127,6 @@ def main():
         plt.figure(figsize=(10, 6))
         plt.plot(np.rad2deg(item_metadata['ground_truth_trajectory_rad']), label='True', color='blue')
         plt.plot(np.rad2deg(predicted_trajectory), label='Predicted', color='red', linestyle='--')
-        # Add a vertical line to show where the comparison is happening
         plt.axvline(x=len(predicted_trajectory) + angle_comparison_index, color='green', linestyle=':', label='Angle Comparison Point')
         plt.title(f"Trajectory for {image_path.name}"); plt.xlabel("Time Step"); plt.ylabel("Angle (deg)")
         plt.legend(); plt.grid(True)
