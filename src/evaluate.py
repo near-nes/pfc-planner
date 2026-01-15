@@ -104,7 +104,10 @@ def main():
         planner = GLEPlanner(params=verified_params, net=net)
 
     model_path = MODELS_DIR / f"trained_{args.model}_planner.pth"
-    planner.load_model(model_path) # Load the (now consistent) model
+    planner.load_model(model_path)
+    post_phase_steps = int((verified_params.time_grasp + verified_params.time_post) / verified_params.resolution)
+    angle_comparison_index = -post_phase_steps if post_phase_steps > 0 else -1
+    print(f"Comparing angles at index {angle_comparison_index} (end of movement phase).")
 
     correct_choices, correct_angles = 0, 0
     for item_metadata in eval_dataset.task_data:
@@ -112,12 +115,17 @@ def main():
         predicted_trajectory, predicted_choice = planner.image_to_trajectory(image_path)
         if predicted_choice == item_metadata['target_choice']:
             correct_choices += 1
-        if np.isclose(predicted_trajectory[-1], item_metadata['ground_truth_trajectory_rad'][-1], atol=np.deg2rad(1.0)):
+
+        pred_angle = predicted_trajectory[angle_comparison_index]
+        true_angle = item_metadata['ground_truth_trajectory_rad'][angle_comparison_index]
+        if np.isclose(pred_angle, true_angle, atol=np.deg2rad(1.0)):
             correct_angles += 1
 
         plt.figure(figsize=(10, 6))
         plt.plot(np.rad2deg(item_metadata['ground_truth_trajectory_rad']), label='True', color='blue')
         plt.plot(np.rad2deg(predicted_trajectory), label='Predicted', color='red', linestyle='--')
+        # Add a vertical line to show where the comparison is happening
+        plt.axvline(x=len(predicted_trajectory) + angle_comparison_index, color='green', linestyle=':', label='Angle Comparison Point')
         plt.title(f"Trajectory for {image_path.name}"); plt.xlabel("Time Step"); plt.ylabel("Angle (deg)")
         plt.legend(); plt.grid(True)
         plt.savefig(RESULTS_DIR / f"{image_path.stem}_trajectory.png")
@@ -127,7 +135,7 @@ def main():
     angle_accuracy = (correct_angles / len(eval_dataset)) * 100
     print(f"\n--- Evaluation Complete ---")
     print(f"Choice Accuracy: {choice_accuracy:.2f}%")
-    print(f"Final Angle Accuracy (within 1 degree): {angle_accuracy:.2f}%")
+    print(f"Final Angle Accuracy (at end of movement): {angle_accuracy:.2f}%")
     print(f"Plots saved to '{RESULTS_DIR.resolve()}'")
 
 

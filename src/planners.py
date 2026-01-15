@@ -91,7 +91,7 @@ class GLEPlannerNet(GLEAbstractNet, nn.Module):
 
     def compute_target_error(self, output, target, beta):
         e = torch.zeros_like(output)
-        e[:, :self.params.trajectory_length] = 0.001 * (target[:, :self.params.trajectory_length] - output[:, :self.params.trajectory_length])
+        e[:, :self.params.trajectory_length] = 0.01 * (target[:, :self.params.trajectory_length] - output[:, :self.params.trajectory_length])
         choice_probs = torch.softmax(output[:, self.params.trajectory_length:], dim=1)
         target_choice = target[:, self.params.trajectory_length:]
         e[:, self.params.trajectory_length:] = target_choice - choice_probs
