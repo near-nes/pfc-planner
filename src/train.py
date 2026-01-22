@@ -70,7 +70,7 @@ def run_training(params: PlannerParams):
 
     print(f"Loaded {len(train_dataset)} samples. Trajectory length: {params.trajectory_length}")
 
-    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=len(train_dataset), shuffle=True)
+    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=params.batch_size, shuffle=True)
 
     if params.model_type == 'ann':
         net = ANNPlannerNet(params=params).to(device)

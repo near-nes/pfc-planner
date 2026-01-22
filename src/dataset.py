@@ -75,27 +75,29 @@ class RobotArmDataset(torch.utils.data.Dataset):
         Parses all image filenames, generates trajectories, and returns a list of task metadata.
         """
         task_data = []
-        image_files = glob.glob(os.path.join(self.data_dir, 'start_*.bmp'))
+        # Matches all .bmp files to find the new numeric pattern
+        image_files = glob.glob(os.path.join(self.data_dir, '*.bmp'))
         task_map_path = os.path.join(self.data_dir, 'task_diff.txt')
         task_mapping = self._load_task_mapping(task_map_path)
 
         for img_path in image_files:
-            phase, target_angle_deg, color = self._parse_filename(img_path)
-            if phase != 'start' or target_angle_deg is None or color is None:
+            start_angle, target_angle, color = self._parse_filename(img_path)
+
+            # If parsing fails (e.g. file starts with 'start_'), it returns None and skips
+            if start_angle is None or target_angle is None:
                 continue
 
-            # Generate ground truth trajectory, which will be in RADIANS
             trajectory_rad = self._generate_minjerk_trajectory_in_radians(
-                start_angle_deg=self.params.initial_elbow_angle_deg,
-                end_angle_deg=target_angle_deg
+                start_angle_deg=float(start_angle),
+                end_angle_deg=float(target_angle)
             )
 
             task_data.append({
                 'image_path': img_path,
                 'color': color,
-                'initial_angle_deg': self.params.initial_elbow_angle_deg,
-                'target_final_angle_deg': target_angle_deg,
-                'ground_truth_trajectory_rad': trajectory_rad,  # Explicitly RADIANS
+                'initial_angle_deg': float(start_angle),
+                'target_final_angle_deg': float(target_angle),
+                'ground_truth_trajectory_rad': trajectory_rad,
                 'target_choice': task_mapping.get(color, 'unknown'),
             })
 
@@ -111,15 +113,15 @@ class RobotArmDataset(torch.utils.data.Dataset):
         return task_data
 
     @staticmethod
-    def _parse_filename(filename: str) -> Tuple[Optional[str], Optional[int], Optional[str]]:
-        """Parses a filename like 'start_120_blue.bmp'."""
+    def _parse_filename(filename: str) -> Tuple[Optional[int], Optional[int], Optional[str]]:
+        """Parses a filename like '90_120_blue.bmp'."""
         base = os.path.basename(filename)
         parts = base.replace('.bmp', '').split('_')
         if len(parts) != 3:
             return None, None, None
         try:
-            phase, angle_str, color = parts
-            return phase, int(angle_str), color
+            # This will fail and return None for files starting with 'start_'
+            return int(parts[0]), int(parts[1]), parts[2]
         except (ValueError, IndexError):
             return None, None, None
 

@@ -17,7 +17,6 @@ class PlannerParams:
     gle_beta: float = 1.0
 
     # --- Simulation Parameters for Trajectory Generation ---
-    initial_elbow_angle_deg: float = 90.0
     time_prep: float = 650.0
     time_move: float = 500.0
     time_grasp: float = 100.0
@@ -26,7 +25,8 @@ class PlannerParams:
 
     # --- Training Parameters ---
     learning_rate: float = 0.01
-    num_epochs: int = 500
+    num_epochs: int = 100
+    batch_size: int = 128
     gle_update_steps: int = 10
 
     # --- Tracking & Reproducibility ---
