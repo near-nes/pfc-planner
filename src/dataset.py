@@ -101,15 +101,6 @@ class RobotArmDataset(torch.utils.data.Dataset):
                 'target_choice': task_mapping.get(color, 'unknown'),
             })
 
-        # Ensure all trajectories have the same length as defined in params
-        if task_data and len(task_data[0]['ground_truth_trajectory_rad']) != self.params.trajectory_length:
-            warnings.warn(
-                f"Trajectory length mismatch! "
-                f"Generated: {len(task_data[0]['ground_truth_trajectory_rad'])}, "
-                f"Params: {self.params.trajectory_length}. "
-                f"Please check simulation parameters in config.py."
-            )
-
         return task_data
 
     @staticmethod

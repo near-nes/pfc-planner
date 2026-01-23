@@ -124,14 +124,15 @@ def main():
         if np.isclose(pred_angle, true_angle, atol=np.deg2rad(1.0)):
             correct_angles += 1
 
-        plt.figure(figsize=(10, 6))
-        plt.plot(np.rad2deg(item_metadata['ground_truth_trajectory_rad']), label='True', color='blue')
-        plt.plot(np.rad2deg(predicted_trajectory), label='Predicted', color='red', linestyle='--')
-        plt.axvline(x=len(predicted_trajectory) + angle_comparison_index, color='green', linestyle=':', label='Angle Comparison Point')
-        plt.title(f"Trajectory for {image_path.name}"); plt.xlabel("Time Step"); plt.ylabel("Angle (deg)")
-        plt.legend(); plt.grid(True)
-        plt.savefig(RESULTS_DIR / f"{image_path.stem}_trajectory.png")
-        plt.close()
+        # plt.figure(figsize=(10, 6))
+        # plt.plot(np.rad2deg(item_metadata['ground_truth_trajectory_rad']), label='True', color='blue')
+        # plt.plot(np.rad2deg(predicted_trajectory), label='Predicted', color='red', linestyle='--')
+        # # Add a vertical line to show where the comparison is happening
+        # plt.axvline(x=len(predicted_trajectory) + angle_comparison_index, color='green', linestyle=':', label='Angle Comparison Point')
+        # plt.title(f"Trajectory for {image_path.name}"); plt.xlabel("Time Step"); plt.ylabel("Angle (deg)")
+        # plt.legend(); plt.grid(True)
+        # plt.savefig(RESULTS_DIR / f"{image_path.stem}_trajectory.png")
+        # plt.close()
 
     choice_accuracy = (correct_choices / len(eval_dataset)) * 100
     angle_accuracy = (correct_angles / len(eval_dataset)) * 100

@@ -30,18 +30,43 @@ def get_project_root() -> Path:
         print("WARNING: Primary project path not found. Using current directory as project root.")
         return Path(".").resolve()
 
-def get_git_commit_hash(project_root: Path) -> str:
-    """Gets the current git commit hash from the project root directory."""
+def get_git_hash(path: Path) -> str:
+    """Helper to get short hash and dirty status for a specific path."""
     try:
+        # Get the short hash
         commit_hash = subprocess.check_output(
             ['git', 'rev-parse', '--short', 'HEAD'],
-            stderr=subprocess.PIPE,
-            cwd=project_root
+            stderr=subprocess.DEVNULL,
+            cwd=path
         ).decode('utf-8').strip()
+
+        # Check for uncommitted changes (dirty state)
+        status = subprocess.check_output(
+            ['git', 'status', '--porcelain', '--untracked-files=no'],
+            stderr=subprocess.DEVNULL,
+            cwd=path
+        ).decode('utf-8').strip()
+
+        if status:
+            return f"{commit_hash}-dirty"
         return commit_hash
     except (subprocess.CalledProcessError, FileNotFoundError):
         print("WARNING: Could not determine git commit hash. Not a git repository or git is not installed.")
         return "N/A"
+
+def get_git_commit_hash() -> str:
+    """Gets the current git commit hashes for both the submodule and parent project."""
+    pfc_root = get_project_root()
+    pfc_hash = get_git_hash(pfc_root)
+
+    # Try to find the parent project root
+    # If pfc_root is '.../submodules/pfc_planner', the parent is 2 levels up
+    if "submodules" in pfc_root.parts:
+        controller_root = pfc_root.parent.parent
+        controller_hash = get_git_hash(controller_root)
+        return f"pfc:{pfc_hash} | controller:{controller_hash}"
+
+    return f"pfc:{pfc_hash}"
 
 
 def run_training(params: PlannerParams):
@@ -70,6 +95,7 @@ def run_training(params: PlannerParams):
 
     print(f"Loaded {len(train_dataset)} samples. Trajectory length: {params.trajectory_length}")
 
+    # Use batch_size from params
     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=params.batch_size, shuffle=True)
 
     if params.model_type == 'ann':
