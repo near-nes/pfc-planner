@@ -121,7 +121,7 @@ def main():
     model_path = MODELS_DIR / f"trained_{args.model}_planner.pth"
     planner.load_model(model_path)
     post_phase_steps = int((verified_params.time_grasp + verified_params.time_post) / verified_params.resolution)
-    angle_comparison_index = -post_phase_steps if post_phase_steps > 0 else -1
+    angle_comparison_index = -post_phase_steps - 1 if post_phase_steps > 0 else -1
     print(f"Comparing angles at index {angle_comparison_index} (end of movement phase).")
 
     correct_choices, correct_angles = 0, 0
