@@ -2,7 +2,7 @@ import sys
 import argparse
 import json
 import subprocess
-from dataclasses import asdict, dataclass
+from dataclasses import asdict
 from pathlib import Path
 
 import torch
@@ -177,7 +177,7 @@ def main():
     project_root = get_project_root()
     params = default_params
     params.model_type = args.model
-    params.git_commit = get_git_commit_hash(project_root)
+    params.git_commit = get_git_commit_hash()
 
     run_training(params)
 
