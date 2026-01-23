@@ -90,7 +90,7 @@ def run_training(params: PlannerParams):
     ]))
 
     if len(train_dataset) == 0:
-        print(f"ERROR: No data found in {DATA_DIR}. Aborting training.")
+        print(f"ERROR: No data found in {DATA_DIR}. Run imagedata_gen.py to generate data before evaluation.")
         return
 
     print(f"Loaded {len(train_dataset)} samples. Trajectory length: {params.trajectory_length}")

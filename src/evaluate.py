@@ -107,7 +107,7 @@ def main():
 
     eval_dataset = RobotArmDataset(data_dir=str(DATA_DIR), params=verified_params)
     if not eval_dataset.task_data:
-        sys.exit(f"ERROR: No data found in {DATA_DIR}. Exiting.")
+        sys.exit(f"ERROR: No data found in {DATA_DIR}. Run imagedata_gen.py to generate data before evaluation.")
 
     print(f"Loaded {len(eval_dataset)} samples. Trajectory length: {verified_params.trajectory_length}")
 
