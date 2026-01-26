@@ -9,6 +9,9 @@ from PIL import Image
 import torch
 
 from .config import PlannerParams
+import structlog
+
+_log: structlog.BoundLogger = structlog.get_logger("[pfc_planner.dataset]")
 
 # Path to the external controller package
 _CONTROLLER_PATH = os.environ.get("CONTROLLER_PATH", "/sim/controller/complete_control")
@@ -20,10 +23,10 @@ try:
     sys.path.insert(0, _CONTROLLER_PATH)
     from complete_control.config.core_models import OracleData, SimulationParams
     from complete_control.utils_common.generate_signals_minjerk import generate_trajectory_minjerk
-    warnings.warn(f"Successfully imported controller from '{_CONTROLLER_PATH}'.")
+    _log.warning(f"Successfully imported controller from '{_CONTROLLER_PATH}'.")
 
 except ImportError as e:
-    warnings.warn(f"Controller import failed: {e}. Using local fallback implementation.")
+    _log.warning(f"Controller import failed: {e}. Using local fallback implementation.")
     # Assuming a local fallback implementation exists at .minjerk_fallback
     from .minjerk_fallback import (
         FallbackOracleData as OracleData,
@@ -101,7 +104,7 @@ class RobotArmDataset(torch.utils.data.Dataset):
 
         # Ensure all trajectories have the same length as defined in params
         if task_data and len(task_data[0]['ground_truth_trajectory_rad']) != self.params.trajectory_length:
-            warnings.warn(
+            _log.warning(
                 f"Trajectory length mismatch! "
                 f"Generated: {len(task_data[0]['ground_truth_trajectory_rad'])}, "
                 f"Params: {self.params.trajectory_length}. "
@@ -150,6 +153,7 @@ class RobotArmDataset(torch.utils.data.Dataset):
             oracle=oracle_data,
             time_prep=self.params.time_prep,
             time_move=self.params.time_move,
+            time_locked_with_feedback=self.params.time_locked_with_feedback,
             time_grasp=self.params.time_grasp,
             time_post=self.params.time_post,
             n_trials=1,
