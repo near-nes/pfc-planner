@@ -95,7 +95,7 @@ def main():
     if verified_params is None:
         print("Triggering model retraining...")
         # We need to ensure the git_commit is set on the params object used for training
-        current_params.git_commit = get_git_commit_hash(PROJECT_ROOT)
+        current_params.git_commit = get_git_commit_hash()
         run_training(current_params)
         print("\n--- Retraining complete. Proceeding with evaluation of the new model. ---")
         verified_params = current_params

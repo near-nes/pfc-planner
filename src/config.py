@@ -24,9 +24,9 @@ class PlannerParams:
     resolution: float = 1  # Timestep for trajectory generation
 
     # --- Training Parameters ---
-    learning_rate: float = 0.01
-    num_epochs: int = 200
-    batch_size: int = 128
+    learning_rate: float = 0.005
+    num_epochs: int = 300
+    batch_size: int = 64
     gle_update_steps: int = 10
 
     # --- Tracking & Reproducibility ---

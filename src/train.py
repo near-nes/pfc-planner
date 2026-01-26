@@ -147,6 +147,10 @@ def run_training(params: PlannerParams):
         if (epoch + 1) % 10 == 0 or epoch == 0:
             print(f"Epoch {epoch+1: >3}/{params.num_epochs} | Total Loss: {epoch_loss:.6f} | Traj Loss: {epoch_traj_loss:.6f} | Choice Loss: {epoch_choice_loss:.6f}")
 
+        # checkpoint model every 10 epochs
+        if (epoch + 1) % 10 == 0:
+            torch.save(net.state_dict(), MODELS_DIR / f"checkpoint_{params.model_type}_planner_epoch{epoch+1}.pth")
+
     print("\n--- Training Finished ---")
     model_save_path = MODELS_DIR / f"trained_{params.model_type}_planner.pth"
     config_save_path = MODELS_DIR / f"trained_{params.model_type}_planner.json"
