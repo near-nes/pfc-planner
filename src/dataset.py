@@ -153,6 +153,7 @@ class RobotArmDataset(torch.utils.data.Dataset):
             oracle=oracle_data,
             time_prep=self.params.time_prep,
             time_move=self.params.time_move,
+            time_locked_with_feedback=self.params.time_locked_with_feedback,
             time_grasp=self.params.time_grasp,
             time_post=self.params.time_post,
             n_trials=1,
