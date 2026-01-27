@@ -2,7 +2,7 @@ import sys
 import argparse
 import json
 import subprocess
-from dataclasses import asdict, dataclass
+from dataclasses import asdict
 from pathlib import Path
 
 import torch
@@ -30,18 +30,43 @@ def get_project_root() -> Path:
         print("WARNING: Primary project path not found. Using current directory as project root.")
         return Path(".").resolve()
 
-def get_git_commit_hash(project_root: Path) -> str:
-    """Gets the current git commit hash from the project root directory."""
+def get_git_hash(path: Path) -> str:
+    """Helper to get short hash and dirty status for a specific path."""
     try:
+        # Get the short hash
         commit_hash = subprocess.check_output(
             ['git', 'rev-parse', '--short', 'HEAD'],
-            stderr=subprocess.PIPE,
-            cwd=project_root
+            stderr=subprocess.DEVNULL,
+            cwd=path
         ).decode('utf-8').strip()
+
+        # Check for uncommitted changes (dirty state)
+        status = subprocess.check_output(
+            ['git', 'status', '--porcelain', '--untracked-files=no'],
+            stderr=subprocess.DEVNULL,
+            cwd=path
+        ).decode('utf-8').strip()
+
+        if status:
+            return f"{commit_hash}-dirty"
         return commit_hash
     except (subprocess.CalledProcessError, FileNotFoundError):
         print("WARNING: Could not determine git commit hash. Not a git repository or git is not installed.")
         return "N/A"
+
+def get_git_commit_hash() -> str:
+    """Gets the current git commit hashes for both the submodule and parent project."""
+    pfc_root = get_project_root()
+    pfc_hash = get_git_hash(pfc_root)
+
+    # Try to find the parent project root
+    # If pfc_root is '.../submodules/pfc_planner', the parent is 2 levels up
+    if "submodules" in pfc_root.parts:
+        controller_root = pfc_root.parent.parent
+        controller_hash = get_git_hash(controller_root)
+        return f"pfc:{pfc_hash} | controller:{controller_hash}"
+
+    return f"pfc:{pfc_hash}"
 
 
 def run_training(params: PlannerParams):
@@ -65,12 +90,13 @@ def run_training(params: PlannerParams):
     ]))
 
     if len(train_dataset) == 0:
-        print(f"ERROR: No data found in {DATA_DIR}. Aborting training.")
+        print(f"ERROR: No data found in {DATA_DIR}. Run imagedata_gen.py to generate data before evaluation.")
         return
 
     print(f"Loaded {len(train_dataset)} samples. Trajectory length: {params.trajectory_length}")
 
-    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=len(train_dataset), shuffle=True)
+    # Use batch_size from params
+    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=params.batch_size, shuffle=True)
 
     if params.model_type == 'ann':
         net = ANNPlannerNet(params=params).to(device)
@@ -121,6 +147,10 @@ def run_training(params: PlannerParams):
         if (epoch + 1) % 10 == 0 or epoch == 0:
             print(f"Epoch {epoch+1: >3}/{params.num_epochs} | Total Loss: {epoch_loss:.6f} | Traj Loss: {epoch_traj_loss:.6f} | Choice Loss: {epoch_choice_loss:.6f}")
 
+        # checkpoint model every 10 epochs
+        if (epoch + 1) % 10 == 0:
+            torch.save(net.state_dict(), MODELS_DIR / f"checkpoint_{params.model_type}_planner_epoch{epoch+1}.pth")
+
     print("\n--- Training Finished ---")
     model_save_path = MODELS_DIR / f"trained_{params.model_type}_planner.pth"
     config_save_path = MODELS_DIR / f"trained_{params.model_type}_planner.json"
@@ -151,7 +181,7 @@ def main():
     project_root = get_project_root()
     params = default_params
     params.model_type = args.model
-    params.git_commit = get_git_commit_hash(project_root)
+    params.git_commit = get_git_commit_hash()
 
     run_training(params)
 

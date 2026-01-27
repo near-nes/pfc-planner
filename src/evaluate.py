@@ -4,7 +4,7 @@ import argparse
 import json
 import subprocess
 import dataclasses
-from dataclasses import asdict, dataclass
+from dataclasses import asdict
 from pathlib import Path
 
 import torch
@@ -20,8 +20,8 @@ from .train import get_project_root, get_git_commit_hash, run_training
 def verify_or_get_params(model_type: str, models_dir: Path, current_params: PlannerParams, project_root: Path) -> PlannerParams:
     """
     Checks for a consistent, existing model configuration.
-    - If consistent, returns the params.
-    - If inconsistent or files are missing, triggers retraining by returning None.
+    - If critical params match, returns the params (even if git hash differs).
+    - If critical params differ or files are missing, returns None to trigger retraining.
     """
     config_path = models_dir / f"trained_{model_type}_planner.json"
     model_path = models_dir / f"trained_{model_type}_planner.pth"
@@ -34,35 +34,46 @@ def verify_or_get_params(model_type: str, models_dir: Path, current_params: Plan
     with open(config_path, 'r') as f:
         saved_params_dict = json.load(f)
 
-    # Normalize image_size for consistent comparison
+    # Normalize image_size for comparison (JSON stores tuples as lists)
     if 'image_size' in saved_params_dict and isinstance(saved_params_dict['image_size'], list):
         saved_params_dict['image_size'] = tuple(saved_params_dict['image_size'])
 
     # Get the current parameters and git hash
-    current_params.git_commit = get_git_commit_hash(project_root)
+    current_params.git_commit = get_git_commit_hash()
     current_params_dict = asdict(current_params)
 
-    # Exclude 'git_commit' from the check because committing the model would change it.
-    # The saved git_commit is for traceability, not for triggering retraining.
-    keys_to_compare = [k for k in current_params_dict.keys() if k != 'git_commit']
+    # Define which keys are just "metadata" and shouldn't trigger a retrain
+    metadata_keys = {'git_commit'}
 
-    mismatch = False
-    for key in keys_to_compare:
-        if saved_params_dict.get(key) != current_params_dict.get(key):
-            print(f"  - Mismatch on '{key}': Saved='{saved_params_dict.get(key)}', Current='{current_params_dict.get(key)}'")
-            mismatch = True
+    critical_mismatch = False
+    metadata_mismatch = False
 
-    if not mismatch:
-        print("Configuration verified successfully.")
-        # Return the params loaded from the file, as they are the "ground truth"
-        return dataclasses.replace(current_params, **saved_params_dict)
-    else:
-        print("\n" + "="*80)
-        print("WARNING: Configuration mismatch detected! The model's defining parameters have changed.")
-        print(f"  - Code version during original training: {saved_params_dict.get('git_commit', 'N/A')}")
-        print(f"  - Current code version:                  {current_params.git_commit}")
-        print("="*80 + "\n")
-        return None # Trigger retraining
+    for key, current_val in current_params_dict.items():
+        saved_val = saved_params_dict.get(key)
+        if saved_val != current_val:
+            if key in metadata_keys:
+                metadata_mismatch = True
+            else:
+                print(f"  - CRITICAL Mismatch on '{key}': Saved='{saved_val}', Current='{current_val}'")
+                critical_mismatch = True
+
+    if critical_mismatch:
+        print("\n" + "!"*80)
+        print("CRITICAL CONFIGURATION MISMATCH: Retraining is required.")
+        print("!"*80 + "\n")
+        return None
+
+    if metadata_mismatch:
+        print("\n" + "-"*80)
+        print("NOTE: Code version mismatch detected, but parameters are identical.")
+        print(f"  - Model trained with: {saved_params_dict.get('git_commit', 'N/A')}")
+        print(f"  - Current code version: {current_params_dict.get('git_commit', 'N/A')}")
+        print("Skipping retraining and proceeding with evaluation.")
+        print("-"*80 + "\n")
+
+    print("Configuration verified successfully.")
+    # Return the saved params to ensure evaluation uses exactly what the model was trained with
+    return dataclasses.replace(current_params, **saved_params_dict)
 
 
 def main():
@@ -78,12 +89,13 @@ def main():
     current_params.model_type = args.model
     # git_commit will be set during verification
 
+    # This function now handles all checks: existence and consistency
     verified_params = verify_or_get_params(args.model, MODELS_DIR, current_params, PROJECT_ROOT)
 
     if verified_params is None:
         print("Triggering model retraining...")
         # We need to ensure the git_commit is set on the params object used for training
-        current_params.git_commit = get_git_commit_hash(PROJECT_ROOT)
+        current_params.git_commit = get_git_commit_hash()
         run_training(current_params)
         print("\n--- Retraining complete. Proceeding with evaluation of the new model. ---")
         verified_params = current_params
@@ -95,7 +107,7 @@ def main():
 
     eval_dataset = RobotArmDataset(data_dir=str(DATA_DIR), params=verified_params)
     if not eval_dataset.task_data:
-        sys.exit(f"ERROR: No data found in {DATA_DIR}. Exiting.")
+        sys.exit(f"ERROR: No data found in {DATA_DIR}. Run imagedata_gen.py to generate data before evaluation.")
 
     print(f"Loaded {len(eval_dataset)} samples. Trajectory length: {verified_params.trajectory_length}")
 
@@ -109,7 +121,7 @@ def main():
     model_path = MODELS_DIR / f"trained_{args.model}_planner.pth"
     planner.load_model(model_path)
     post_phase_steps = int((verified_params.time_grasp + verified_params.time_post) / verified_params.resolution)
-    angle_comparison_index = -post_phase_steps if post_phase_steps > 0 else -1
+    angle_comparison_index = -post_phase_steps - 1 if post_phase_steps > 0 else -1
     print(f"Comparing angles at index {angle_comparison_index} (end of movement phase).")
 
     correct_choices, correct_angles = 0, 0
@@ -124,14 +136,14 @@ def main():
         if np.isclose(pred_angle, true_angle, atol=np.deg2rad(1.0)):
             correct_angles += 1
 
-        plt.figure(figsize=(10, 6))
-        plt.plot(np.rad2deg(item_metadata['ground_truth_trajectory_rad']), label='True', color='blue')
-        plt.plot(np.rad2deg(predicted_trajectory), label='Predicted', color='red', linestyle='--')
-        plt.axvline(x=len(predicted_trajectory) + angle_comparison_index, color='green', linestyle=':', label='Angle Comparison Point')
-        plt.title(f"Trajectory for {image_path.name}"); plt.xlabel("Time Step"); plt.ylabel("Angle (deg)")
-        plt.legend(); plt.grid(True)
-        plt.savefig(RESULTS_DIR / f"{image_path.stem}_trajectory.png")
-        plt.close()
+        # plt.figure(figsize=(10, 6))
+        # plt.plot(np.rad2deg(item_metadata['ground_truth_trajectory_rad']), label='True', color='blue')
+        # plt.plot(np.rad2deg(predicted_trajectory), label='Predicted', color='red', linestyle='--')
+        # plt.axvline(x=len(predicted_trajectory) + angle_comparison_index, color='green', linestyle=':', label='Angle Comparison Point')
+        # plt.title(f"Trajectory for {image_path.name}"); plt.xlabel("Time Step"); plt.ylabel("Angle (deg)")
+        # plt.legend(); plt.grid(True)
+        # plt.savefig(RESULTS_DIR / f"{image_path.stem}_trajectory.png")
+        # plt.close()
 
     choice_accuracy = (correct_choices / len(eval_dataset)) * 100
     angle_accuracy = (correct_angles / len(eval_dataset)) * 100
