@@ -29,8 +29,9 @@ class FallbackSimulationParams:
     resolution: float = 1.0      # ms
     time_prep: float = 650.0     # ms
     time_move: float = 500.0     # ms
+    time_locked_with_feedback: float = 150.0  # ms
     time_grasp: float = 100.0    # ms
-    time_post: float = 250.0     # ms
+    time_post: float = 100.0     # ms
     n_trials: int = 1
     frozen: bool = False
 
@@ -56,7 +57,8 @@ def generate_minjerk_fallback(sim_params: FallbackSimulationParams) -> np.ndarra
 
     # Convert durations to number of steps based on the resolution (`res`)
     prep_steps = max(0, int(round(sim_params.time_prep / res)))
-    move_steps = max(2, int(round(sim_params.time_move / res))) # Need at least 2 for linspace
+    move_steps = max(2, int(round(sim_params.time_move / res)))
+    lock_steps = max(0, int(round(sim_params.time_locked_with_feedback / res)))
     grasp_steps = max(0, int(round(sim_params.time_grasp / res)))
     post_steps = max(0, int(round(sim_params.time_post / res)))
 
@@ -68,6 +70,7 @@ def generate_minjerk_fallback(sim_params: FallbackSimulationParams) -> np.ndarra
     full_traj = np.concatenate([
         np.full(prep_steps, start_rad),
         move_segment,
+        np.full(lock_steps, end_rad),
         np.full(grasp_steps, end_rad),
         np.zeros(post_steps)
     ])
