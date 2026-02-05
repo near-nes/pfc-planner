@@ -47,7 +47,7 @@ def get_git_commit_hash(project_root: Path) -> str:
         return "N/A"
 
 
-def run_training(params: PlannerParams, project_root: Path = None):
+def run_training(params: PlannerParams, project_root: Path = None, model_dir: Path = None):
     """
     Runs the training process for a given set of parameters.
 
@@ -62,7 +62,7 @@ def run_training(params: PlannerParams, project_root: Path = None):
         project_root = get_project_root()
 
     DATA_DIR = project_root / "data"
-    MODELS_DIR = project_root / "models"
+    MODELS_DIR = model_dir or project_root / "models"
     RESULTS_DIR = project_root / "results"
 
     MODELS_DIR.mkdir(exist_ok=True)

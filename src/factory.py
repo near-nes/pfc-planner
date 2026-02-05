@@ -13,7 +13,12 @@ from .train import get_git_commit_hash, get_project_root, run_training
 _log: structlog.stdlib.BoundLogger = structlog.get_logger("pfc_planner.factory")
 
 
-def get_planner(params: PlannerParams, model_dir: Path = None, project_root: Path = None, skip_cache: bool = False):
+def get_planner(
+    params: PlannerParams,
+    model_dir: Path = None,
+    project_root: Path = None,
+    skip_cache: bool = False,
+):
     """
     Get a planner, training it if necessary.
 
@@ -28,7 +33,7 @@ def get_planner(params: PlannerParams, model_dir: Path = None, project_root: Pat
     if model_dir is None:
         model_dir = project_root / "models"
 
-    current_git_commit = get_git_commit_hash(project_root)
+    params.git_commit = get_git_commit_hash(project_root)
 
     model_type = params.model_type
     model_path = model_dir / f"trained_{model_type}_planner.pth"
@@ -42,12 +47,17 @@ def get_planner(params: PlannerParams, model_dir: Path = None, project_root: Pat
         if "image_size" in saved and isinstance(saved["image_size"], list):
             saved["image_size"] = tuple(saved["image_size"])
 
-        # Check all parameters except git_commit
         requested = asdict(params)
         diffs = {
-            k: (v, saved.get(k)) for k, v in requested.items()
-            if v != saved.get(k) and k != "git_commit"
+            k: (v, saved.get(k)) for k, v in requested.items() if v != saved.get(k)
         }
+        if "git_commit" in diffs:
+            (current, train) = diffs.pop("git_commit")
+            _log.warning(
+                f"planner git commit changed from training",
+                training_hash=train,
+                current_hash=current,
+            )
 
         if diffs:
             diff_strs = [f"{k}: {v[0]} vs {v[1]}" for k, v in diffs.items()]
@@ -69,8 +79,7 @@ def get_planner(params: PlannerParams, model_dir: Path = None, project_root: Pat
         model_type=model_type,
         model_path=str(model_path),
     )
-    params.git_commit = current_git_commit
-    run_training(params, project_root)
+    run_training(params, project_root, model_dir)
     return _load_planner(params, model_path)
 
 
