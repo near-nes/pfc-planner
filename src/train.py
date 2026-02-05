@@ -37,7 +37,7 @@ def get_git_commit_hash(project_root: Path) -> str:
     """Gets the current git commit hash from the project root directory."""
     try:
         commit_hash = subprocess.check_output(
-            ['git', 'rev-parse', '--short', 'HEAD'],
+            ['git', 'describe', '--always', '--dirty'],
             stderr=subprocess.PIPE,
             cwd=project_root
         ).decode('utf-8').strip()
