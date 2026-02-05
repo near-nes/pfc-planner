@@ -13,15 +13,18 @@ from .train import get_git_commit_hash, get_project_root, run_training
 _log: structlog.stdlib.BoundLogger = structlog.get_logger("pfc_planner.factory")
 
 
-def get_planner(params: PlannerParams, model_dir: Path = None):
+def get_planner(params: PlannerParams, model_dir: Path = None, project_root: Path = None, skip_cache: bool = False):
     """
     Get a planner, training it if necessary.
 
     Args:
         params: PlannerParams with required configuration (including model_type)
         model_dir: Override default model directory (default: submodule's models/)
+        project_root: Override project root (default: auto-detect via get_project_root())
+        skip_cache: If True, force retraining even if matching model exists (default: False)
     """
-    project_root = get_project_root()
+    if project_root is None:
+        project_root = get_project_root()
     if model_dir is None:
         model_dir = project_root / "models"
 
@@ -31,44 +34,35 @@ def get_planner(params: PlannerParams, model_dir: Path = None):
     model_path = model_dir / f"trained_{model_type}_planner.pth"
     config_path = model_dir / f"trained_{model_type}_planner.json"
 
-    if model_path.exists() and config_path.exists():
+    if not skip_cache and model_path.exists() and config_path.exists():
         with open(config_path) as f:
             saved = json.load(f)
 
-        critical_match = (
-            saved.get("model_type") == params.model_type
-            and saved.get("git_commit") == current_git_commit
-            and saved.get("resolution") == params.resolution
-            and saved.get("time_prep") == params.time_prep
-            and saved.get("time_move") == params.time_move
-            and saved.get("time_locked_with_feedback")
-            == params.time_locked_with_feedback
-            and saved.get("time_grasp") == params.time_grasp
-            and saved.get("time_post") == params.time_post
-            and saved.get("num_choices") == params.num_choices
-            and tuple(saved.get("image_size", [])) == params.image_size
-        )
+        # Normalize image_size to tuple for comparison (JSON serializes tuples as lists)
+        if "image_size" in saved and isinstance(saved["image_size"], list):
+            saved["image_size"] = tuple(saved["image_size"])
 
-        # Log all differences
+        # Check all parameters except git_commit
         requested = asdict(params)
         diffs = {
-            k: (v, saved.get(k)) for k, v in requested.items() if v != saved.get(k)
+            k: (v, saved.get(k)) for k, v in requested.items()
+            if v != saved.get(k) and k != "git_commit"
         }
+
         if diffs:
             diff_strs = [f"{k}: {v[0]} vs {v[1]}" for k, v in diffs.items()]
-            if critical_match:
-                _log.info(
-                    "Parameter differences (requested vs saved), using saved model",
-                    differences=diff_strs,
-                )
-            else:
-                _log.warning(
-                    "Critical parameter mismatch, retraining required",
-                    differences=diff_strs,
-                )
-
-        if critical_match:
+            _log.warning(
+                "Critical parameter mismatch, retraining required",
+                differences=diff_strs,
+            )
+        else:
+            # No differences, load existing model
             return _load_planner(params, model_path)
+    elif skip_cache:
+        _log.warning(
+            "Cache skipped, forcing retraining",
+            model_type=model_type,
+        )
 
     _log.warning(
         "No matching model found, starting training",
@@ -76,7 +70,7 @@ def get_planner(params: PlannerParams, model_dir: Path = None):
         model_path=str(model_path),
     )
     params.git_commit = current_git_commit
-    run_training(params)
+    run_training(params, project_root)
     return _load_planner(params, model_path)
 
 
