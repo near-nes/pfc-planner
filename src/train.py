@@ -14,6 +14,9 @@ import matplotlib.pyplot as plt
 from .planners import ANNPlannerNet, GLEPlannerNet
 from .dataset import RobotArmDataset
 from .config import PlannerParams, default_params
+import structlog
+
+_log:structlog.BoundLogger = structlog.get_logger("[pfc_planner]")
 
 def get_project_root() -> Path:
     """
@@ -23,37 +26,44 @@ def get_project_root() -> Path:
     primary_path = Path("submodules/pfc_planner")
     if primary_path.exists() and primary_path.is_dir():
         # Use the submodule path if it exists
-        print(f"Using primary project path: {primary_path.resolve()}")
+        _log.debug(f"Using primary project path: {primary_path.resolve()}")
         return primary_path.resolve()
     else:
         # Fallback to the current directory for standalone execution
-        print("WARNING: Primary project path not found. Using current directory as project root.")
+        _log.debug("WARNING: Primary project path not found. Using current directory as project root.")
         return Path(".").resolve()
 
 def get_git_commit_hash(project_root: Path) -> str:
     """Gets the current git commit hash from the project root directory."""
     try:
         commit_hash = subprocess.check_output(
-            ['git', 'rev-parse', '--short', 'HEAD'],
+            ['git', 'describe', '--always', '--dirty'],
             stderr=subprocess.PIPE,
             cwd=project_root
         ).decode('utf-8').strip()
         return commit_hash
     except (subprocess.CalledProcessError, FileNotFoundError):
-        print("WARNING: Could not determine git commit hash. Not a git repository or git is not installed.")
+        _log.debug("WARNING: Could not determine git commit hash. Not a git repository or git is not installed.")
         return "N/A"
 
 
-def run_training(params: PlannerParams):
+def run_training(params: PlannerParams, project_root: Path = None, model_dir: Path = None):
     """
     Runs the training process for a given set of parameters.
-    """
-    print(f"--- Starting Training for {params.model_type.upper()} Planner (Git commit: {params.git_commit}) ---")
 
-    PROJECT_ROOT = get_project_root()
-    DATA_DIR = PROJECT_ROOT / "data"
-    MODELS_DIR = PROJECT_ROOT / "models"
-    RESULTS_DIR = PROJECT_ROOT / "results"
+    Args:
+        params: PlannerParams with training configuration
+        project_root: Override project root (default: auto-detect via get_project_root())
+    """
+    _log.debug(f"--- Starting Training for {params.model_type.upper()} Planner (Git commit: {params.git_commit}) ---")
+
+    # Only call get_project_root if not provided
+    if project_root is None:
+        project_root = get_project_root()
+
+    DATA_DIR = project_root / "data"
+    MODELS_DIR = model_dir or project_root / "models"
+    RESULTS_DIR = project_root / "results"
 
     MODELS_DIR.mkdir(exist_ok=True)
     RESULTS_DIR.mkdir(exist_ok=True)
@@ -65,10 +75,10 @@ def run_training(params: PlannerParams):
     ]))
 
     if len(train_dataset) == 0:
-        print(f"ERROR: No data found in {DATA_DIR}. Aborting training.")
+        _log.debug(f"ERROR: No data found in {DATA_DIR}. Aborting training.")
         return
 
-    print(f"Loaded {len(train_dataset)} samples. Trajectory length: {params.trajectory_length}")
+    _log.debug(f"Loaded {len(train_dataset)} samples. Trajectory length: {params.trajectory_length}")
 
     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=len(train_dataset), shuffle=True)
 
@@ -83,7 +93,7 @@ def run_training(params: PlannerParams):
 
     loss_history, traj_loss_history, choice_loss_history = [], [], []
 
-    print(f"\nStarting {params.model_type.upper()} training on device '{device}'...")
+    _log.debug(f"\nStarting {params.model_type.upper()} training on device '{device}'...")
     for epoch in range(params.num_epochs):
         net.train()
         running_loss, running_traj_loss, running_choice_loss = 0.0, 0.0, 0.0
@@ -119,27 +129,27 @@ def run_training(params: PlannerParams):
         loss_history.append(epoch_loss); traj_loss_history.append(epoch_traj_loss); choice_loss_history.append(epoch_choice_loss)
 
         if (epoch + 1) % 10 == 0 or epoch == 0:
-            print(f"Epoch {epoch+1: >3}/{params.num_epochs} | Total Loss: {epoch_loss:.6f} | Traj Loss: {epoch_traj_loss:.6f} | Choice Loss: {epoch_choice_loss:.6f}")
+            _log.debug(f"Epoch {epoch+1: >3}/{params.num_epochs} | Total Loss: {epoch_loss:.6f} | Traj Loss: {epoch_traj_loss:.6f} | Choice Loss: {epoch_choice_loss:.6f}")
 
-    print("\n--- Training Finished ---")
+    _log.debug("\n--- Training Finished ---")
     model_save_path = MODELS_DIR / f"trained_{params.model_type}_planner.pth"
     config_save_path = MODELS_DIR / f"trained_{params.model_type}_planner.json"
 
     # Save model weights
     torch.save(net.state_dict(), model_save_path)
-    print(f"Model saved to {model_save_path}")
+    _log.debug(f"Model saved to {model_save_path}")
 
     # Save configuration to JSON
     with open(config_save_path, 'w') as f:
         json.dump(asdict(params), f, indent=4)
-    print(f"Configuration saved to {config_save_path}")
+    _log.debug(f"Configuration saved to {config_save_path}")
 
     plt.figure(figsize=(10, 6))
     plt.plot(loss_history, label='Total Loss'); plt.plot(traj_loss_history, label='Trajectory Loss'); plt.plot(choice_loss_history, label='Choice Loss')
     plt.xlabel('Epoch'); plt.ylabel('Loss'); plt.title(f'Training Loss for {params.model_type.upper()} Planner'); plt.legend(); plt.grid(True)
     plt.savefig(RESULTS_DIR / f'{params.model_type}_planner_training_loss.png')
     plt.close()
-    print(f"Training plot saved to {RESULTS_DIR}")
+    _log.debug(f"Training plot saved to {RESULTS_DIR}")
 
 
 def main():
@@ -153,7 +163,7 @@ def main():
     params.model_type = args.model
     params.git_commit = get_git_commit_hash(project_root)
 
-    run_training(params)
+    run_training(params, project_root)
 
 if __name__ == "__main__":
     main()

@@ -1,15 +1,17 @@
 """
 Centralized configuration for the PFC Planner project.
 """
-from dataclasses import dataclass, field
-from typing import List, Tuple
+
+from dataclasses import dataclass
+from typing import Tuple
 
 
 @dataclass
 class PlannerParams:
     """Parameters for planner models, simulation, and training."""
+
     # --- Model Hyperparameters ---
-    model_type: str = 'gle'  # 'ann' or 'gle'
+    model_type: str = "gle"  # 'ann' or 'gle'
     num_choices: int = 2
     image_size: Tuple[int, int] = (100, 100)
     # For GLE model
@@ -20,8 +22,9 @@ class PlannerParams:
     initial_elbow_angle_deg: float = 90.0
     time_prep: float = 650.0
     time_move: float = 500.0
+    time_locked_with_feedback: float = 150
     time_grasp: float = 100.0
-    time_post: float = 250.0
+    time_post: float = 100.0
     resolution: float = 1  # Timestep for trajectory generation
 
     # --- Training Parameters ---
@@ -38,8 +41,15 @@ class PlannerParams:
 
     def __post_init__(self):
         """Calculate derived parameters after initialization."""
-        total_time = self.time_prep + self.time_move + self.time_grasp + self.time_post
+        total_time = (
+            self.time_prep
+            + self.time_move
+            + self.time_locked_with_feedback
+            + self.time_grasp
+            + self.time_post
+        )
         self.trajectory_length = int(total_time / self.resolution)
+
 
 # Default parameters instance
 default_params = PlannerParams()
