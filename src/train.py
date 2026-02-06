@@ -37,7 +37,7 @@ def get_git_commit_hash(project_root: Path) -> str:
     """Gets the current git commit hash from the project root directory."""
     try:
         commit_hash = subprocess.check_output(
-            ['git', 'rev-parse', '--short', 'HEAD'],
+            ['git', 'describe', '--always', '--dirty'],
             stderr=subprocess.PIPE,
             cwd=project_root
         ).decode('utf-8').strip()
@@ -46,16 +46,24 @@ def get_git_commit_hash(project_root: Path) -> str:
         _log.debug("WARNING: Could not determine git commit hash. Not a git repository or git is not installed.")
         return "N/A"
 
-def run_training(params: PlannerParams):
+
+def run_training(params: PlannerParams, project_root: Path = None, model_dir: Path = None):
     """
     Runs the training process for a given set of parameters.
+
+    Args:
+        params: PlannerParams with training configuration
+        project_root: Override project root (default: auto-detect via get_project_root())
     """
     _log.debug(f"--- Starting Training for {params.model_type.upper()} Planner (Git commit: {params.git_commit}) ---")
 
-    PROJECT_ROOT = get_project_root()
-    DATA_DIR = PROJECT_ROOT / "data"
-    MODELS_DIR = PROJECT_ROOT / "models"
-    RESULTS_DIR = PROJECT_ROOT / "results"
+    # Only call get_project_root if not provided
+    if project_root is None:
+        project_root = get_project_root()
+
+    DATA_DIR = project_root / "data"
+    MODELS_DIR = model_dir or project_root / "models"
+    RESULTS_DIR = project_root / "results"
 
     MODELS_DIR.mkdir(exist_ok=True)
     RESULTS_DIR.mkdir(exist_ok=True)
@@ -160,7 +168,7 @@ def main():
     params.model_type = args.model
     params.git_commit = get_git_commit_hash(project_root)
 
-    run_training(params)
+    run_training(params, project_root)
 
 if __name__ == "__main__":
     main()
