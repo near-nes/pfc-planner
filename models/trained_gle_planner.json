@@ -17,6 +17,6 @@
     "num_epochs": 300,
     "batch_size": 64,
     "gle_update_steps": 10,
-    "git_commit": "1fae0f1",
+    "git_commit": "5ef44ce-dirty",
     "trajectory_length": 1500
 }

@@ -44,7 +44,8 @@ def main():
     # Calculate comparison index
     post_phase_steps = int((current_params.time_grasp + current_params.time_post) / current_params.resolution)
     angle_comparison_index = -post_phase_steps - 1 if post_phase_steps > 0 else -1
-    print(f"Comparing angles at index {angle_comparison_index} (end of movement phase).")
+    angle_tolerance_deg = 3.0
+    print(f"Comparing angles at index {angle_comparison_index} at the end of movement with tolerance ±{angle_tolerance_deg} degrees.")
 
     # Evaluate
     correct_choices, correct_angles = 0, 0
@@ -57,7 +58,7 @@ def main():
 
         pred_angle = predicted_trajectory[angle_comparison_index]
         true_angle = item_metadata['ground_truth_trajectory_rad'][angle_comparison_index]
-        if np.isclose(pred_angle, true_angle, atol=np.deg2rad(5.0)):
+        if np.isclose(pred_angle, true_angle, atol=np.deg2rad(angle_tolerance_deg)):
             correct_angles += 1
 
         # Plot trajectory

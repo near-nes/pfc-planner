@@ -82,10 +82,12 @@ class GLEPlannerNet(GLEAbstractNet, nn.Module):
         self.conv2 = GLEConv(16, 32, kernel_size=3, stride=4, padding=1)
         dummy_input = torch.rand(1, 3, *self.params.image_size)
         conv_output_size = self.conv2(self.conv1(dummy_input)).view(1, -1).size(1)
-        self.fc = GLELinear(conv_output_size, self.params.trajectory_length + self.params.num_choices)
+        self.fc1 = GLELinear(conv_output_size, 128)
+        self.fc2 = GLELinear(128, self.params.trajectory_length + self.params.num_choices)
         self.conv1_dyn = GLEDynamics(self.conv1, tau_m=self.params.gle_tau, dt=self.params.resolution, phi=self.phi, phi_prime=self.phi_prime)
         self.conv2_dyn = GLEDynamics(self.conv2, tau_m=self.params.gle_tau, dt=self.params.resolution, phi=self.phi, phi_prime=self.phi_prime)
-        self.fc_dyn = GLEDynamics(self.fc, tau_m=self.params.gle_tau, dt=self.params.resolution)
+        self.fc1_dyn = GLEDynamics(self.fc1, tau_m=self.params.gle_tau, dt=self.params.resolution, phi=self.phi, phi_prime=self.phi_prime)
+        self.fc2_dyn = GLEDynamics(self.fc2, tau_m=self.params.gle_tau, dt=self.params.resolution)
 
     # The 'forward' method is inherited from GLEAbstractNet
 
