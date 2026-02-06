@@ -7,7 +7,7 @@ from pathlib import Path
 import structlog
 
 from .config import PlannerParams
-from .planners import ANNPlanner, ANNPlannerNet, GLEPlanner, GLEPlannerNet
+from .planners import ANNPlanner, GLEPlanner
 from .train import get_git_commit_hash, get_project_root, run_training
 
 _log: structlog.stdlib.BoundLogger = structlog.get_logger("pfc_planner.factory")
@@ -21,6 +21,10 @@ def get_planner(
 ):
     """
     Get a planner, training it if necessary.
+
+    A planner consists of:
+    1. Vision network: for extracting angles and choice from images
+    2. Trajectory generator: for converting angles to full trajectories
 
     Args:
         params: PlannerParams with required configuration (including model_type)
@@ -84,12 +88,11 @@ def get_planner(
 
 
 def _load_planner(params: PlannerParams, model_path: Path):
+    """Load a planner with its vision network and trajectory generator."""
     if params.model_type == "gle":
-        net = GLEPlannerNet(params=params)
-        planner = GLEPlanner(params=params, net=net)
+        planner = GLEPlanner(params=params)
     else:
-        net = ANNPlannerNet(params=params)
-        planner = ANNPlanner(params=params, net=net)
+        planner = ANNPlanner(params=params)
 
     planner.load_model(model_path)
     return planner

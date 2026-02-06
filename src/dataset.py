@@ -1,7 +1,6 @@
 import os
 import sys
 import glob
-import warnings
 from typing import List, Tuple, Dict, Optional, Any, Callable
 
 import numpy as np
@@ -13,31 +12,10 @@ import structlog
 
 _log: structlog.BoundLogger = structlog.get_logger("[pfc_planner.dataset]")
 
-# Path to the external controller package
-_CONTROLLER_PATH = os.environ.get("CONTROLLER_PATH", "/sim/controller/complete_control")
-
-try:
-    if not os.path.isdir(_CONTROLLER_PATH):
-        raise ImportError(f"Controller path '{_CONTROLLER_PATH}' not found or not a directory.")
-
-    sys.path.insert(0, _CONTROLLER_PATH)
-    from complete_control.config.core_models import OracleData, SimulationParams
-    from complete_control.utils_common.generate_signals_minjerk import generate_trajectory_minjerk
-    _log.warning(f"Successfully imported controller from '{_CONTROLLER_PATH}'.")
-
-except ImportError as e:
-    _log.warning(f"Controller import failed: {e}. Using local fallback implementation.")
-    # Assuming a local fallback implementation exists at .minjerk_fallback
-    from .minjerk_fallback import (
-        FallbackOracleData as OracleData,
-        FallbackSimulationParams as SimulationParams,
-        generate_minjerk_fallback as generate_trajectory_minjerk,
-    )
-
 
 class RobotArmDataset(torch.utils.data.Dataset):
     """
-    Dataset for robot arm control, loading images and generating ground-truth trajectories.
+    Dataset for robot arm control, loading images and extracting start/final angles.
     """
     def __init__(self, data_dir: str, params: PlannerParams, transform: Optional[Callable] = None):
         super().__init__()
@@ -54,7 +32,7 @@ class RobotArmDataset(torch.utils.data.Dataset):
         """
         Returns a single data sample for the model.
         - Image tensor
-        - Target trajectory tensor (in RADIANS)
+        - Target angles tensor [start_angle, final_angle] in RADIANS
         - Target choice index tensor
         """
         item = self.task_data[idx]
@@ -64,21 +42,22 @@ class RobotArmDataset(torch.utils.data.Dataset):
         if self.transform:
             image = self.transform(image)
 
-        # The trajectory is already in radians, ready for the model
-        target_trajectory = torch.tensor(item['ground_truth_trajectory_rad'], dtype=torch.float)
+        # Convert angles from degrees to radians
+        start_angle_rad = np.deg2rad(item['initial_angle_deg'])
+        final_angle_rad = np.deg2rad(item['target_final_angle_deg'])
+        target_angles = torch.tensor([start_angle_rad, final_angle_rad], dtype=torch.float)
 
         # Target for choice classification
         target_choice_idx = self.choice_to_idx[item['target_choice']]
         target_choice = torch.tensor(target_choice_idx, dtype=torch.long)
 
-        return image, target_trajectory, target_choice
+        return image, target_angles, target_choice
 
     def _load_all_task_data(self) -> List[Dict[str, Any]]:
         """
-        Parses all image filenames, generates trajectories, and returns a list of task metadata.
+        Parses all image filenames and extracts start/final angles.
         """
         task_data = []
-        # Matches all .bmp files to find the new numeric pattern
         image_files = glob.glob(os.path.join(self.data_dir, '*.bmp'))
         task_map_path = os.path.join(self.data_dir, 'task_diff.txt')
         task_mapping = self._load_task_mapping(task_map_path)
@@ -86,33 +65,19 @@ class RobotArmDataset(torch.utils.data.Dataset):
         for img_path in image_files:
             start_angle, target_angle, color = self._parse_filename(img_path)
 
-            # If parsing fails (e.g. file starts with 'start_'), it returns None and skips
+            # If parsing fails (e.g. file starts with 'start_'), skip
             if start_angle is None or target_angle is None:
                 continue
-
-            trajectory_rad = self._generate_minjerk_trajectory_in_radians(
-                start_angle_deg=float(start_angle),
-                end_angle_deg=float(target_angle)
-            )
 
             task_data.append({
                 'image_path': img_path,
                 'color': color,
                 'initial_angle_deg': float(start_angle),
                 'target_final_angle_deg': float(target_angle),
-                'ground_truth_trajectory_rad': trajectory_rad,
                 'target_choice': task_mapping.get(color, 'unknown'),
             })
 
-        # Ensure all trajectories have the same length as defined in params
-        if task_data and len(task_data[0]['ground_truth_trajectory_rad']) != self.params.trajectory_length:
-            _log.warning(
-                f"Trajectory length mismatch! "
-                f"Generated: {len(task_data[0]['ground_truth_trajectory_rad'])}, "
-                f"Params: {self.params.trajectory_length}. "
-                f"Please check simulation parameters in config.py."
-            )
-
+        _log.warning(f"Loaded {len(task_data)} task samples from {self.data_dir}")
         return task_data
 
     @staticmethod
@@ -123,7 +88,6 @@ class RobotArmDataset(torch.utils.data.Dataset):
         if len(parts) != 3:
             return None, None, None
         try:
-            # This will fail and return None for files starting with 'start_'
             return int(parts[0]), int(parts[1]), parts[2]
         except (ValueError, IndexError):
             return None, None, None
@@ -142,30 +106,3 @@ class RobotArmDataset(torch.utils.data.Dataset):
         except FileNotFoundError:
             raise FileNotFoundError(f"Task mapping file not found: {txt_file}")
         return mapping
-
-    def _generate_minjerk_trajectory_in_radians(
-        self, start_angle_deg: float, end_angle_deg: float
-    ) -> List[float]:
-        """
-        Generates a min-jerk trajectory using the imported controller library
-        based on simulation parameters from the params object.
-        """
-        oracle_data = OracleData(init_joint_angle=start_angle_deg, tgt_joint_angle=end_angle_deg)
-        sim_params = SimulationParams(
-            oracle=oracle_data,
-            time_prep=self.params.time_prep,
-            time_move=self.params.time_move,
-            time_locked_with_feedback=self.params.time_locked_with_feedback,
-            time_grasp=self.params.time_grasp,
-            time_post=self.params.time_post,
-            n_trials=1,
-            frozen=False,
-            resolution=self.params.resolution,
-        )
-
-        # The external `generate_trajectory_minjerk` function returns the trajectory in RADIANS
-        trajectory_rad = generate_trajectory_minjerk(sim_params)
-
-        # Ensure the result is a flat, 1D list of floats
-        traj_arr = np.array(trajectory_rad).flatten()
-        return traj_arr.tolist()

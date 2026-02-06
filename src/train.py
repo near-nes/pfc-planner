@@ -11,12 +11,13 @@ import torch.optim as optim
 from torchvision import transforms
 import matplotlib.pyplot as plt
 
-from .planners import ANNPlannerNet, GLEPlannerNet
+from .planners import ANNVisionNet, GLEVisionNet
 from .dataset import RobotArmDataset
 from .config import PlannerParams, default_params
 import structlog
 
-_log:structlog.BoundLogger = structlog.get_logger("[pfc_planner]")
+_log: structlog.BoundLogger = structlog.get_logger("[pfc_planner]")
+
 
 def get_project_root() -> Path:
     """
@@ -25,13 +26,12 @@ def get_project_root() -> Path:
     """
     primary_path = Path("submodules/pfc_planner")
     if primary_path.exists() and primary_path.is_dir():
-        # Use the submodule path if it exists
         _log.debug(f"Using primary project path: {primary_path.resolve()}")
         return primary_path.resolve()
     else:
-        # Fallback to the current directory for standalone execution
         _log.debug("WARNING: Primary project path not found. Using current directory as project root.")
         return Path(".").resolve()
+
 
 def get_git_commit_hash(project_root: Path) -> str:
     """Gets the current git commit hash from the project root directory."""
@@ -50,14 +50,15 @@ def get_git_commit_hash(project_root: Path) -> str:
 def run_training(params: PlannerParams, project_root: Path = None, model_dir: Path = None):
     """
     Runs the training process for a given set of parameters.
+    Trains the vision network component of the planner.
 
     Args:
         params: PlannerParams with training configuration
         project_root: Override project root (default: auto-detect via get_project_root())
+        model_dir: Override model directory
     """
-    _log.debug(f"--- Starting Training for {params.model_type.upper()} Planner (Git commit: {params.git_commit}) ---")
+    _log.debug(f"--- Starting Vision Network Training for {params.model_type.upper()} Planner (Git commit: {params.git_commit}) ---")
 
-    # Only call get_project_root if not provided
     if project_root is None:
         project_root = get_project_root()
 
@@ -70,88 +71,113 @@ def run_training(params: PlannerParams, project_root: Path = None, model_dir: Pa
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    train_dataset = RobotArmDataset(data_dir=str(DATA_DIR), params=params, transform=transforms.Compose([
-        transforms.Resize(params.image_size), transforms.ToTensor()
-    ]))
+    train_dataset = RobotArmDataset(
+        data_dir=str(DATA_DIR),
+        params=params,
+        transform=transforms.Compose([
+            transforms.Resize(params.image_size),
+            transforms.ToTensor()
+        ])
+    )
 
     if len(train_dataset) == 0:
-        _log.debug(f"ERROR: No data found in {DATA_DIR}. Run imagedata_gen.py to generate data before evaluation.")
+        _log.debug(f"ERROR: No data found in {DATA_DIR}. Run imagedata_gen.py to generate data before training.")
         return
 
-    _log.debug(f"Loaded {len(train_dataset)} samples. Trajectory length: {params.trajectory_length}")
+    _log.debug(f"Loaded {len(train_dataset)} samples.")
 
-    # Use batch_size from params
     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=params.batch_size, shuffle=True)
 
+    # Create vision network
     if params.model_type == 'ann':
-        net = ANNPlannerNet(params=params).to(device)
-    else: # gle
-        net = GLEPlannerNet(params=params).to(device)
+        vision_net = ANNVisionNet(params=params).to(device)
+    else:  # gle
+        vision_net = GLEVisionNet(params=params).to(device)
 
-    optimizer = optim.Adam(net.parameters(), lr=params.learning_rate)
-    criterion_trajectory = nn.MSELoss()
+    optimizer = optim.Adam(vision_net.parameters(), lr=params.learning_rate)
+    criterion_angles = nn.MSELoss()
     criterion_choice = nn.CrossEntropyLoss()
 
-    loss_history, traj_loss_history, choice_loss_history = [], [], []
+    loss_history, angle_loss_history, choice_loss_history = [], [], []
 
-    _log.debug(f"\nStarting {params.model_type.upper()} training on device '{device}'...")
+    _log.debug(f"\nStarting {params.model_type.upper()} vision network training on device '{device}'...")
+
     for epoch in range(params.num_epochs):
-        net.train()
-        running_loss, running_traj_loss, running_choice_loss = 0.0, 0.0, 0.0
+        vision_net.train()
+        running_loss, running_angle_loss, running_choice_loss = 0.0, 0.0, 0.0
 
-        for images, true_trajectory, target_choice_idx in train_loader:
-            images, true_trajectory, target_choice_idx = images.to(device), true_trajectory.to(device), target_choice_idx.to(device)
+        for images, true_angles, target_choice_idx in train_loader:
+            images = images.to(device)
+            true_angles = true_angles.to(device)
+            target_choice_idx = target_choice_idx.to(device)
+
             optimizer.zero_grad()
 
             if params.model_type == 'ann':
-                output = net(images)
-                trajectory_loss = criterion_trajectory(output[:, :params.trajectory_length], true_trajectory)
-                choice_loss = criterion_choice(output[:, params.trajectory_length:], target_choice_idx)
-                total_loss = trajectory_loss + choice_loss
+                output = vision_net(images)
+                angle_loss = criterion_angles(output[:, :params.num_angle_outputs], true_angles)
+                choice_loss = criterion_choice(output[:, params.num_angle_outputs:], target_choice_idx)
+                total_loss = angle_loss + choice_loss
                 total_loss.backward()
                 optimizer.step()
-            else: # gle
-                target = torch.cat((true_trajectory, torch.nn.functional.one_hot(target_choice_idx, num_classes=params.num_choices)), dim=1)
+            else:  # gle
+                target = torch.cat((
+                    true_angles,
+                    torch.nn.functional.one_hot(target_choice_idx, num_classes=params.num_choices).float()
+                ), dim=1)
+
                 for _ in range(params.gle_update_steps):
-                    output = net(images, target, beta=params.gle_beta)
+                    output = vision_net(images, target, beta=params.gle_beta)
+
                 optimizer.step()
-                trajectory_loss = criterion_trajectory(output[:, :params.trajectory_length], true_trajectory)
-                choice_loss = criterion_choice(output[:, params.trajectory_length:], target_choice_idx)
-                total_loss = trajectory_loss + choice_loss
+                angle_loss = criterion_angles(output[:, :params.num_angle_outputs], true_angles)
+                choice_loss = criterion_choice(output[:, params.num_angle_outputs:], target_choice_idx)
+                total_loss = angle_loss + choice_loss
 
             running_loss += total_loss.item()
-            running_traj_loss += trajectory_loss.item()
+            running_angle_loss += angle_loss.item()
             running_choice_loss += choice_loss.item()
 
         epoch_loss = running_loss / len(train_loader)
-        epoch_traj_loss = running_traj_loss / len(train_loader)
+        epoch_angle_loss = running_angle_loss / len(train_loader)
         epoch_choice_loss = running_choice_loss / len(train_loader)
 
-        loss_history.append(epoch_loss); traj_loss_history.append(epoch_traj_loss); choice_loss_history.append(epoch_choice_loss)
+        loss_history.append(epoch_loss)
+        angle_loss_history.append(epoch_angle_loss)
+        choice_loss_history.append(epoch_choice_loss)
 
         if (epoch + 1) % 10 == 0 or epoch == 0:
-            _log.debug(f"Epoch {epoch+1: >3}/{params.num_epochs} | Total Loss: {epoch_loss:.6f} | Traj Loss: {epoch_traj_loss:.6f} | Choice Loss: {epoch_choice_loss:.6f}")
-
-        # checkpoint model every 10 epochs
-        # if (epoch + 1) % 10 == 0:
-        #     torch.save(net.state_dict(), MODELS_DIR / f"checkpoint_{params.model_type}_planner_epoch{epoch+1}.pth")
+            _log.debug(
+                f"Epoch {epoch+1: >3}/{params.num_epochs} | "
+                f"Total Loss: {epoch_loss:.6f} | "
+                f"Angle Loss: {epoch_angle_loss:.6f} | "
+                f"Choice Loss: {epoch_choice_loss:.6f}"
+            )
 
     _log.debug("\n--- Training Finished ---")
     model_save_path = MODELS_DIR / f"trained_{params.model_type}_planner.pth"
     config_save_path = MODELS_DIR / f"trained_{params.model_type}_planner.json"
 
-    # Save model weights
-    torch.save(net.state_dict(), model_save_path)
-    _log.debug(f"Model saved to {model_save_path}")
+    # Save vision network weights
+    torch.save(vision_net.state_dict(), model_save_path)
+    _log.debug(f"Vision network saved to {model_save_path}")
 
     # Save configuration to JSON
     with open(config_save_path, 'w') as f:
         json.dump(asdict(params), f, indent=4)
     _log.debug(f"Configuration saved to {config_save_path}")
 
+    # Plot training losses
     plt.figure(figsize=(10, 6))
-    plt.plot(loss_history, label='Total Loss'); plt.plot(traj_loss_history, label='Trajectory Loss'); plt.plot(choice_loss_history, label='Choice Loss')
-    plt.xlabel('Epoch'); plt.ylabel('Loss'); plt.title(f'Training Loss for {params.model_type.upper()} Planner'); plt.legend(); plt.grid(True)
+    plt.plot(loss_history, label='Total Loss')
+    plt.plot(angle_loss_history, label='Angle Loss')
+    plt.plot(choice_loss_history, label='Choice Loss')
+    plt.xlabel('Epoch')
+    plt.ylabel('Loss')
+    plt.yscale('log')
+    plt.title(f'Vision Network Training Loss for {params.model_type.upper()} Planner')
+    plt.legend()
+    plt.grid(True)
     plt.savefig(RESULTS_DIR / f'{params.model_type}_planner_training_loss.png')
     plt.close()
     _log.debug(f"Training plot saved to {RESULTS_DIR}")
@@ -159,7 +185,7 @@ def run_training(params: PlannerParams, project_root: Path = None, model_dir: Pa
 
 def main():
     """Main function to handle training of a selected planner model."""
-    parser = argparse.ArgumentParser(description="Train Planner Models for Robotic Arm")
+    parser = argparse.ArgumentParser(description="Train Planner Vision Networks for Robotic Arm")
     parser.add_argument('--model', type=str, choices=['ann', 'gle'], default=default_params.model_type, help="Model type to train")
     args = parser.parse_args()
 
@@ -169,6 +195,7 @@ def main():
     params.git_commit = get_git_commit_hash(project_root)
 
     run_training(params, project_root)
+
 
 if __name__ == "__main__":
     main()

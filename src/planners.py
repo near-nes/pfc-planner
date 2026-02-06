@@ -1,7 +1,7 @@
 import os
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Tuple
+from typing import Tuple, Optional
 
 import numpy as np
 import torch
@@ -14,47 +14,20 @@ from .gle.dynamics import GLEDynamics
 from .gle.layers import GLEConv, GLELinear
 from .gle.utils import get_phi_and_derivative
 from .config import PlannerParams
+from .trajectory_generators import TrajectoryGeneratorBase, get_trajectory_generator
 
-# --- Base Class and Network Definitions ---
-
-class TrajectoryGenerator(ABC):
-    """Abstract Base Class for trajectory and choice generation models."""
-    def __init__(self, params: PlannerParams, net: nn.Module):
-        self.params = params
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.net = net
-        self.net.to(self.device)
-        self.image_transform = transforms.Compose([
-            transforms.Resize(self.params.image_size),
-            transforms.ToTensor(),
-        ])
-        self.model_loaded = False
-
-    def load_model(self, model_path: Path):
-        if not model_path.exists():
-            raise FileNotFoundError(f"Model file not found at: {model_path}")
-        print(f"Loading trained model from {model_path} to device '{self.device}'...")
-        try:
-            self.net.load_state_dict(torch.load(model_path, map_location=self.device))
-            self.net.eval()
-            self.model_loaded = True
-        except RuntimeError as e:
-            print(f"Error loading model. Architecture mismatch or corrupted file.")
-            raise e
-
-    def save_model(self, model_path: Path):
-        """Saves the network's state_dict to the specified path."""
-        print(f"Saving model to {model_path}...")
-        os.makedirs(model_path.parent, exist_ok=True)
-        torch.save(self.net.state_dict(), model_path)
+class VisionNet(ABC, nn.Module):
+    """Abstract base class for vision networks that predict angles and choices from images."""
 
     @abstractmethod
-    def image_to_trajectory(self, img_path: Path) -> Tuple[np.ndarray, str]:
-        """Generates a trajectory and choice from a single input image."""
+    def forward(self, x):
+        """Forward pass returning concatenated [angles, choice_logits]."""
         raise NotImplementedError
 
-class ANNPlannerNet(nn.Module):
-    """The ANN network architecture."""
+
+class ANNVisionNet(VisionNet):
+    """ANN-based vision network for angle and choice prediction."""
+
     def __init__(self, params: PlannerParams):
         super().__init__()
         self.params = params
@@ -65,45 +38,156 @@ class ANNPlannerNet(nn.Module):
         )
         dummy_input = torch.rand(1, 3, *self.params.image_size)
         conv_output_size = self.conv_layers(dummy_input).size(1)
-        self.trajectory_regressor = nn.Linear(conv_output_size, self.params.trajectory_length)
+
+        # Output: 2 angles (start, final) + num_choices for classification
+        self.angle_regressor = nn.Linear(conv_output_size, self.params.num_angle_outputs)
         self.choice_classifier = nn.Linear(conv_output_size, self.params.num_choices)
 
     def forward(self, x):
         features = self.conv_layers(x)
-        return torch.cat((self.trajectory_regressor(features), self.choice_classifier(features)), dim=1)
+        angles = self.angle_regressor(features)
+        choice_logits = self.choice_classifier(features)
+        return torch.cat((angles, choice_logits), dim=1)
 
-class GLEPlannerNet(GLEAbstractNet, nn.Module):
-    """The GLE network architecture."""
+
+class GLEVisionNet(GLEAbstractNet, VisionNet):
+    """GLE-based vision network for angle and choice prediction."""
+
     def __init__(self, params: PlannerParams):
         super().__init__()
         self.params = params
         self.phi, self.phi_prime = get_phi_and_derivative("tanh")
+
         self.conv1 = GLEConv(3, 16, kernel_size=5, stride=4, padding=1)
         self.conv2 = GLEConv(16, 32, kernel_size=3, stride=4, padding=1)
+
         dummy_input = torch.rand(1, 3, *self.params.image_size)
         conv_output_size = self.conv2(self.conv1(dummy_input)).view(1, -1).size(1)
-        self.fc1 = GLELinear(conv_output_size, 128)
-        self.fc2 = GLELinear(128, self.params.trajectory_length + self.params.num_choices)
-        self.conv1_dyn = GLEDynamics(self.conv1, tau_m=self.params.gle_tau, dt=self.params.resolution, phi=self.phi, phi_prime=self.phi_prime)
-        self.conv2_dyn = GLEDynamics(self.conv2, tau_m=self.params.gle_tau, dt=self.params.resolution, phi=self.phi, phi_prime=self.phi_prime)
-        self.fc1_dyn = GLEDynamics(self.fc1, tau_m=self.params.gle_tau, dt=self.params.resolution, phi=self.phi, phi_prime=self.phi_prime)
-        self.fc2_dyn = GLEDynamics(self.fc2, tau_m=self.params.gle_tau, dt=self.params.resolution)
 
-    # The 'forward' method is inherited from GLEAbstractNet
+        self.fc1 = GLELinear(conv_output_size, 128)
+        # Output: 2 angles + num_choices
+        self.fc2 = GLELinear(128, self.params.num_angle_outputs + self.params.num_choices)
+
+        self.conv1_dyn = GLEDynamics(self.conv1, tau_m=self.params.gle_tau, dt=1.0, phi=self.phi, phi_prime=self.phi_prime)
+        self.conv2_dyn = GLEDynamics(self.conv2, tau_m=self.params.gle_tau, dt=1.0, phi=self.phi, phi_prime=self.phi_prime)
+        self.fc1_dyn = GLEDynamics(self.fc1, tau_m=self.params.gle_tau, dt=1.0, phi=self.phi, phi_prime=self.phi_prime)
+        self.fc2_dyn = GLEDynamics(self.fc2, tau_m=self.params.gle_tau, dt=1.0)
 
     def compute_target_error(self, output, target, beta):
         e = torch.zeros_like(output)
-        e[:, :self.params.trajectory_length] = 0.01 * (target[:, :self.params.trajectory_length] - output[:, :self.params.trajectory_length])
-        choice_probs = torch.softmax(output[:, self.params.trajectory_length:], dim=1)
-        target_choice = target[:, self.params.trajectory_length:]
-        e[:, self.params.trajectory_length:] = target_choice - choice_probs
+        # Error for angle prediction (first 2 outputs)
+        e[:, :self.params.num_angle_outputs] = 0.01 * (target[:, :self.params.num_angle_outputs] - output[:, :self.params.num_angle_outputs])
+
+        # Error for choice classification (remaining outputs)
+        choice_probs = torch.softmax(output[:, self.params.num_angle_outputs:], dim=1)
+        target_choice = target[:, self.params.num_angle_outputs:]
+        e[:, self.params.num_angle_outputs:] = target_choice - choice_probs
+
         return beta * e
 
-# --- Concrete Planner Implementations ---
 
-class ANNPlanner(TrajectoryGenerator):
-    """Concrete implementation for the ANN model."""
+class Planner(ABC):
+    """
+    Base planner class composed of:
+    1. Vision network: extracts angles and choice from images
+    2. Trajectory generator: converts angles to full trajectories
+    """
+
+    def __init__(
+        self,
+        params: PlannerParams,
+        vision_net: VisionNet,
+        trajectory_generator: Optional[TrajectoryGeneratorBase] = None
+    ):
+        self.params = params
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+        # Vision network for angle and choice prediction
+        self.vision_net = vision_net
+        self.vision_net.to(self.device)
+
+        self.image_transform = transforms.Compose([
+            transforms.Resize(self.params.image_size),
+            transforms.ToTensor(),
+        ])
+        self.model_loaded = False
+
+        # Trajectory generator for converting angles to trajectories
+        if trajectory_generator is None:
+            self.trajectory_generator = get_trajectory_generator(
+                generator_type=params.trajectory_generator_type,
+                params=params
+            )
+        else:
+            self.trajectory_generator = trajectory_generator
+
+    def load_model(self, model_path: Path):
+        """Load the vision network weights."""
+        if not model_path.exists():
+            raise FileNotFoundError(f"Model file not found at: {model_path}")
+        print(f"Loading vision network from {model_path} to device '{self.device}'...")
+        try:
+            self.vision_net.load_state_dict(torch.load(model_path, map_location=self.device))
+            self.vision_net.eval()
+            self.model_loaded = True
+        except RuntimeError as e:
+            print(f"Error loading model. Architecture mismatch or corrupted file.")
+            raise e
+
+    def save_model(self, model_path: Path):
+        """Save the vision network's state_dict."""
+        print(f"Saving vision network to {model_path}...")
+        os.makedirs(model_path.parent, exist_ok=True)
+        torch.save(self.vision_net.state_dict(), model_path)
+
+    def set_trajectory_generator(self, trajectory_generator: TrajectoryGeneratorBase):
+        """Swap trajectory generator at runtime for flexibility."""
+        self.trajectory_generator = trajectory_generator
+
+    @abstractmethod
+    def image_to_angles(self, img_path: Path) -> Tuple[float, float, str]:
+        """
+        Extract angles and choice from image using vision network.
+
+        Returns:
+            start_angle_rad: Starting angle in radians
+            final_angle_rad: Final angle in radians
+            choice: 'left' or 'right'
+        """
+        raise NotImplementedError
+
     def image_to_trajectory(self, img_path: Path) -> Tuple[np.ndarray, str]:
+        """
+        Complete pipeline: image → angles → trajectory.
+        This is the main interface used by the larger project.
+
+        Returns:
+            trajectory: numpy array of angles in radians over time
+            choice: 'left' or 'right'
+        """
+        # Step 1: Vision network extracts angles and choice
+        start_angle_rad, final_angle_rad, choice = self.image_to_angles(img_path)
+
+        # Step 2: Trajectory generator converts angles to full trajectory
+        trajectory = self.trajectory_generator.angles_to_trajectory(
+            start_angle_rad, final_angle_rad
+        )
+
+        return trajectory, choice
+
+
+class ANNPlanner(Planner):
+    """Planner using ANN-based vision network."""
+
+    def __init__(
+        self,
+        params: PlannerParams,
+        trajectory_generator: Optional[TrajectoryGeneratorBase] = None
+    ):
+        vision_net = ANNVisionNet(params=params)
+        super().__init__(params, vision_net, trajectory_generator)
+
+    def image_to_angles(self, img_path: Path) -> Tuple[float, float, str]:
         if not img_path.exists():
             raise FileNotFoundError(f"Input image not found at: {img_path}")
         if not self.model_loaded:
@@ -113,16 +197,33 @@ class ANNPlanner(TrajectoryGenerator):
         input_tensor = self.image_transform(input_image).unsqueeze(0).to(self.device)
 
         with torch.no_grad():
-            output = self.net(input_tensor)
+            output = self.vision_net(input_tensor)
 
-        predicted_traj = output[:, :self.params.trajectory_length].squeeze(0).cpu().numpy()
-        choice_logits = output[:, self.params.trajectory_length:]
+        # Extract angles (in radians)
+        predicted_angles = output[:, :self.params.num_angle_outputs].squeeze(0).cpu().numpy()
+        start_angle = float(predicted_angles[0])
+        final_angle = float(predicted_angles[1])
+
+        # Extract choice
+        choice_logits = output[:, self.params.num_angle_outputs:]
         choice_idx = torch.argmax(choice_logits, dim=1).item()
-        return predicted_traj, 'left' if choice_idx == 0 else 'right'
+        choice = 'left' if choice_idx == 0 else 'right'
 
-class GLEPlanner(TrajectoryGenerator):
-    """Concrete implementation for the GLE model."""
-    def image_to_trajectory(self, img_path: Path) -> Tuple[np.ndarray, str]:
+        return start_angle, final_angle, choice
+
+
+class GLEPlanner(Planner):
+    """Planner using GLE-based vision network."""
+
+    def __init__(
+        self,
+        params: PlannerParams,
+        trajectory_generator: Optional[TrajectoryGeneratorBase] = None
+    ):
+        vision_net = GLEVisionNet(params=params)
+        super().__init__(params, vision_net, trajectory_generator)
+
+    def image_to_angles(self, img_path: Path) -> Tuple[float, float, str]:
         if not img_path.exists():
             raise FileNotFoundError(f"Input image not found at: {img_path}")
         if not self.model_loaded:
@@ -132,10 +233,22 @@ class GLEPlanner(TrajectoryGenerator):
         input_tensor = self.image_transform(input_image).unsqueeze(0).to(self.device)
 
         with torch.no_grad():
-            for _ in range(self.params.gle_update_steps):  # Run multiple steps for GLE convergence
-                output = self.net(input_tensor)
+            for _ in range(self.params.gle_update_steps):
+                output = self.vision_net(input_tensor)
 
-        predicted_traj = output[:, :self.params.trajectory_length].squeeze(0).cpu().numpy()
-        choice_logits = output[:, self.params.trajectory_length:]
+        # Extract angles (in radians)
+        predicted_angles = output[:, :self.params.num_angle_outputs].squeeze(0).cpu().numpy()
+        start_angle = float(predicted_angles[0])
+        final_angle = float(predicted_angles[1])
+
+        # Extract choice
+        choice_logits = output[:, self.params.num_angle_outputs:]
         choice_idx = torch.argmax(choice_logits, dim=1).item()
-        return predicted_traj, 'left' if choice_idx == 0 else 'right'
+        choice = 'left' if choice_idx == 0 else 'right'
+
+        return start_angle, final_angle, choice
+
+
+# Legacy aliases for backward compatibility
+ANNPlannerNet = ANNVisionNet
+GLEPlannerNet = GLEVisionNet
