@@ -69,6 +69,7 @@ def run_training(params: PlannerParams, project_root: Path = None, model_dir: Pa
     MODELS_DIR.mkdir(exist_ok=True)
     RESULTS_DIR.mkdir(exist_ok=True)
 
+    torch.manual_seed(params.seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     train_dataset = RobotArmDataset(
