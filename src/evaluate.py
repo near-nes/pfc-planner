@@ -71,12 +71,12 @@ def main():
 
         # Get ground truth angles from metadata
         true_start_rad = np.deg2rad(item_metadata['initial_angle_deg'])
-        true_final_rad = np.deg2rad(item_metadata['target_final_angle_deg'])
+        true_final_rad = np.deg2rad(item_metadata['final_angle_deg'])
 
         # Store for analysis
         all_true_start.append(item_metadata['initial_angle_deg'])
         all_pred_start.append(np.rad2deg(pred_start_rad))
-        all_true_final.append(item_metadata['target_final_angle_deg'])
+        all_true_final.append(item_metadata['final_angle_deg'])
         all_pred_final.append(np.rad2deg(pred_final_rad))
 
         # Check choice accuracy
@@ -84,9 +84,10 @@ def main():
             correct_choices += 1
 
         # Check angle accuracy (within 5 degrees tolerance)
-        if np.isclose(pred_start_rad, true_start_rad, atol=np.deg2rad(5.0)):
+        angle_atol_deg = 5.0
+        if np.isclose(pred_start_rad, true_start_rad, atol=np.deg2rad(angle_atol_deg)):
             correct_start_angles += 1
-        if np.isclose(pred_final_rad, true_final_rad, atol=np.deg2rad(5.0)):
+        if np.isclose(pred_final_rad, true_final_rad, atol=np.deg2rad(angle_atol_deg)):
             correct_final_angles += 1
 
         # Optionally plot trajectories
@@ -99,7 +100,7 @@ def main():
             plt.plot(np.rad2deg(true_trajectory), label='True', color='blue')
             plt.plot(np.rad2deg(pred_trajectory), label='Predicted', color='red', linestyle='--')
             plt.axhline(y=item_metadata['initial_angle_deg'], color='green', linestyle=':', alpha=0.5, label='True Start')
-            plt.axhline(y=item_metadata['target_final_angle_deg'], color='purple', linestyle=':', alpha=0.5, label='True Final')
+            plt.axhline(y=item_metadata['final_angle_deg'], color='purple', linestyle=':', alpha=0.5, label='True Final')
             plt.title(f"Trajectory for {image_path.name}")
             plt.xlabel("Time Step")
             plt.ylabel("Angle (deg)")
@@ -120,8 +121,8 @@ def main():
     # Print results
     print(f"\n--- Evaluation Complete ---")
     print(f"Choice Accuracy: {choice_accuracy:.2f}%")
-    print(f"Start Angle Accuracy (±5°): {start_angle_accuracy:.2f}%")
-    print(f"Final Angle Accuracy (±5°): {final_angle_accuracy:.2f}%")
+    print(f"Start Angle Accuracy (±{angle_atol_deg}°): {start_angle_accuracy:.2f}%")
+    print(f"Final Angle Accuracy (±{angle_atol_deg}°): {final_angle_accuracy:.2f}%")
     print(f"Start Angle MAE: {start_mae:.2f}°")
     print(f"Final Angle MAE: {final_mae:.2f}°")
 

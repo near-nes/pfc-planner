@@ -37,7 +37,7 @@ class PlannerParams:
 
     # --- Tracking & Reproducibility ---
     git_commit: str = "N/A"  # To store the git commit hash
-    seed: int = 42  # Random seed for reproducibility
+    seed: int = 0  # Random seed for reproducibility
 
     @property
     def trajectory_length(self) -> int:

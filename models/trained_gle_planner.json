@@ -19,5 +19,6 @@
     "time_grasp": 100.0,
     "time_post": 100.0,
     "resolution": 1.0,
-    "git_commit": "547f4f1"
+    "git_commit": "e345bcb-dirty",
+    "seed": 0
 }

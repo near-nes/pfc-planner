@@ -44,7 +44,7 @@ class RobotArmDataset(torch.utils.data.Dataset):
 
         # Convert angles from degrees to radians
         start_angle_rad = np.deg2rad(item['initial_angle_deg'])
-        final_angle_rad = np.deg2rad(item['target_final_angle_deg'])
+        final_angle_rad = np.deg2rad(item['final_angle_deg'])
         target_angles = torch.tensor([start_angle_rad, final_angle_rad], dtype=torch.float)
 
         # Target for choice classification
@@ -73,7 +73,7 @@ class RobotArmDataset(torch.utils.data.Dataset):
                 'image_path': img_path,
                 'color': color,
                 'initial_angle_deg': float(start_angle),
-                'target_final_angle_deg': float(target_angle),
+                'final_angle_deg': float(target_angle),
                 'target_choice': task_mapping.get(color, 'unknown'),
             })
 
