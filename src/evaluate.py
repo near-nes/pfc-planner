@@ -18,8 +18,8 @@ def main():
     """Main function to handle model evaluation."""
     parser = argparse.ArgumentParser(description="Evaluate Planner Models for Robotic Arm")
     parser.add_argument('--model', type=str, choices=['ann', 'gle'], default=default_params.model_type, help="Model type to evaluate")
-    parser.add_argument('--traj-gen', type=str, choices=['minjerk', 'nn'], default='minjerk', help="Trajectory generator type")
-    parser.add_argument('--traj-model', type=str, default=None, help="Path to NN trajectory generator model (if using 'nn' type)")
+    parser.add_argument('--traj-gen', type=str, choices=['minjerk', 'ann', 'gle'], default='gle', help="Trajectory generator type")
+    parser.add_argument('--traj-model', type=str, default=None, help="Path to trajectory generator model (if using 'ann' or 'gle' type)")
     parser.add_argument('--plot-trajectories', action='store_true', help="Generate trajectory comparison plots")
     args = parser.parse_args()
 
@@ -39,17 +39,22 @@ def main():
     planner = get_planner(params=current_params, model_dir=MODELS_DIR, project_root=PROJECT_ROOT)
 
     # Override trajectory generator if specified
-    if args.traj_gen == 'nn':
-        traj_model_path = Path(args.traj_model) if args.traj_model else MODELS_DIR / "trajectory_generator_nn.pth"
-        traj_gen = get_trajectory_generator('nn', current_params, traj_model_path)
+    if args.traj_gen in ['ann', 'gle']:
+        if args.traj_model:
+            traj_model_path = Path(args.traj_model)
+        else:
+            traj_model_path = MODELS_DIR / f"trained_{args.traj_gen}_trajectory_generator.pth"
+
+        traj_gen = get_trajectory_generator(args.traj_gen, current_params, traj_model_path)
         planner.set_trajectory_generator(traj_gen)
 
-    print("Planner loaded successfully.")
+    print(f"{args.traj_gen.upper()} trajectory generator loaded successfully.")
+    print(f"{args.model.upper()} Planner loaded successfully.")
 
     # Load evaluation dataset
     eval_dataset = RobotArmDataset(data_dir=str(DATA_DIR), params=current_params)
     if not eval_dataset.task_data:
-        sys.exit(f"ERROR: No data found in {DATA_DIR}. Run imagedata_gen.py to generate data before evaluation.")
+        sys.exit(f"ERROR: No data found in {DATA_DIR}. Exiting.")
 
     print(f"Loaded {len(eval_dataset)} samples.")
 
@@ -84,10 +89,9 @@ def main():
             correct_choices += 1
 
         # Check angle accuracy (within 5 degrees tolerance)
-        angle_atol_deg = 5.0
-        if np.isclose(pred_start_rad, true_start_rad, atol=np.deg2rad(angle_atol_deg)):
+        if np.isclose(pred_start_rad, true_start_rad, atol=np.deg2rad(5.0)):
             correct_start_angles += 1
-        if np.isclose(pred_final_rad, true_final_rad, atol=np.deg2rad(angle_atol_deg)):
+        if np.isclose(pred_final_rad, true_final_rad, atol=np.deg2rad(5.0)):
             correct_final_angles += 1
 
         # Optionally plot trajectories
@@ -121,8 +125,8 @@ def main():
     # Print results
     print(f"\n--- Evaluation Complete ---")
     print(f"Choice Accuracy: {choice_accuracy:.2f}%")
-    print(f"Start Angle Accuracy (±{angle_atol_deg}°): {start_angle_accuracy:.2f}%")
-    print(f"Final Angle Accuracy (±{angle_atol_deg}°): {final_angle_accuracy:.2f}%")
+    print(f"Start Angle Accuracy (±5°): {start_angle_accuracy:.2f}%")
+    print(f"Final Angle Accuracy (±5°): {final_angle_accuracy:.2f}%")
     print(f"Start Angle MAE: {start_mae:.2f}°")
     print(f"Final Angle MAE: {final_mae:.2f}°")
 

@@ -17,7 +17,7 @@ class PlannerParams:
     image_size: Tuple[int, int] = (100, 100)
 
     # For GLE model
-    gle_tau: float = 1.0
+    gle_tau: float = 10.0
     gle_beta: float = 1.0
     gle_update_steps: int = 10
 
@@ -27,7 +27,7 @@ class PlannerParams:
     batch_size: int = 64
 
     # --- Trajectory Generation Parameters (for minjerk) ---
-    trajectory_generator_type: str = "minjerk"  # 'minjerk' or 'nn'
+    trajectory_generator_type: str = "gle"  # 'minjerk', 'ann' or 'gle'
     time_prep: float = 650.0
     time_move: float = 500.0
     time_locked_with_feedback: float = 150.0

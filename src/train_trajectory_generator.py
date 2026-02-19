@@ -2,8 +2,8 @@
 """
 Train a neural network-based trajectory generator.
 
-This script trains a NN to learn the mapping from (start_angle, final_angle) → full_trajectory
-using min-jerk trajectories as ground truth.
+This script trains a ANN or GLE network to learn the mapping from
+(start_angle, final_angle) → full_trajectory using min-jerk trajectories as ground truth.
 """
 
 import argparse
@@ -18,7 +18,7 @@ import matplotlib.pyplot as plt
 
 from .config import PlannerParams, default_params
 from .train import get_project_root, get_git_commit_hash
-from .trajectory_generators import MLPTrajectoryGenerator, MinJerkTrajectoryGenerator
+from .trajectory_generators import ANNTrajectoryGenerator, GLETrajectoryGenerator, MinJerkTrajectoryGenerator
 import structlog
 
 _log: structlog.BoundLogger = structlog.get_logger("[pfc_planner.train_traj_gen]")
@@ -84,6 +84,7 @@ class TrajectoryDataset(Dataset):
 
 def train_trajectory_generator(
     params: PlannerParams,
+    generator_type: str = "gle",
     num_samples: int = 10000,
     num_epochs: int = 100,
     batch_size: int = 64,
@@ -93,10 +94,11 @@ def train_trajectory_generator(
     model_dir: Path = None
 ):
     """
-    Train the NN-based trajectory generator.
+    Train the ANN or GLE-based trajectory generator.
 
     Args:
         params: PlannerParams with trajectory generation settings
+        generator_type: 'ann' or 'gle'
         num_samples: Number of training samples to generate
         num_epochs: Number of training epochs
         batch_size: Batch size for training
@@ -115,19 +117,25 @@ def train_trajectory_generator(
     results_dir.mkdir(exist_ok=True)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    _log.warning(f"Training trajectory generator on device: {device}")
+    _log.warning(f"Training {generator_type.upper()} trajectory generator on device: {device}")
 
     # Create dataset and dataloader
     dataset = TrajectoryDataset(params, num_samples, angle_range)
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
 
     # Create model
-    nn_traj_gen = MLPTrajectoryGenerator(params)
-    nn_traj_gen.net.to(device)
-    nn_traj_gen.net.train()
+    if generator_type == "ann":
+        traj_gen = ANNTrajectoryGenerator(params)
+    elif generator_type == "gle":
+        traj_gen = GLETrajectoryGenerator(params)
+    else:
+        raise ValueError(f"Unknown generator type: {generator_type}")
+
+    traj_gen.net.to(device)
+    traj_gen.net.train()
 
     # Optimizer and loss
-    optimizer = optim.Adam(nn_traj_gen.net.parameters(), lr=learning_rate)
+    optimizer = optim.Adam(traj_gen.net.parameters(), lr=learning_rate)
     criterion = nn.MSELoss()
 
     # Training loop
@@ -143,15 +151,22 @@ def train_trajectory_generator(
 
             optimizer.zero_grad()
 
-            # Forward pass
-            predicted_trajectory = nn_traj_gen.net(angles)
+            if generator_type == "ann":
+                # Standard forward pass for ANN
+                predicted_trajectory = traj_gen.net(angles)
+                loss = criterion(predicted_trajectory, true_trajectory)
+                loss.backward()
+                optimizer.step()
+            else:  # gle
+                # GLE-specific training with update steps
+                gle_beta = getattr(params, 'gle_beta', 1.0)
+                gle_update_steps = getattr(params, 'gle_update_steps', 10)
 
-            # Compute loss
-            loss = criterion(predicted_trajectory, true_trajectory)
+                for _ in range(gle_update_steps):
+                    predicted_trajectory = traj_gen.net(angles, true_trajectory, beta=gle_beta)
 
-            # Backward pass
-            loss.backward()
-            optimizer.step()
+                optimizer.step()
+                loss = criterion(predicted_trajectory, true_trajectory)
 
             running_loss += loss.item()
 
@@ -164,8 +179,8 @@ def train_trajectory_generator(
     _log.warning("\n--- Training Complete ---")
 
     # Save model
-    model_path = model_dir / "trajectory_generator_nn.pth"
-    nn_traj_gen.save_model(model_path)
+    model_path = model_dir / f"trained_{generator_type}_trajectory_generator.pth"
+    traj_gen.save_model(model_path)
     _log.warning(f"Model saved to {model_path}")
 
     # Plot training loss
@@ -173,15 +188,15 @@ def train_trajectory_generator(
     plt.plot(loss_history)
     plt.xlabel('Epoch')
     plt.ylabel('MSE Loss')
-    plt.title('Trajectory Generator Training Loss')
+    plt.title(f'{generator_type.upper()} Trajectory Generator Training Loss')
     plt.grid(True)
-    plt.savefig(results_dir / 'trajectory_generator_training_loss.png')
+    plt.savefig(results_dir / f'trajectory_generator_{generator_type}_training_loss.png')
     plt.close()
     _log.warning(f"Training plot saved to {results_dir}")
 
     # Test the model with a few examples
     _log.warning("\n--- Testing Trained Model ---")
-    nn_traj_gen.net.eval()
+    traj_gen.net.eval()
 
     with torch.no_grad():
         # Test with a few specific angle pairs
@@ -195,8 +210,8 @@ def train_trajectory_generator(
             start_rad = np.deg2rad(start_deg)
             final_rad = np.deg2rad(final_deg)
 
-            # Generate using trained NN
-            pred_traj = nn_traj_gen.angles_to_trajectory(start_rad, final_rad)
+            # Generate using trained model
+            pred_traj = traj_gen.angles_to_trajectory(start_rad, final_rad)
 
             # Generate ground truth using min-jerk
             minjerk_gen = MinJerkTrajectoryGenerator(params)
@@ -209,15 +224,15 @@ def train_trajectory_generator(
             # Plot comparison
             plt.figure(figsize=(10, 6))
             plt.plot(np.rad2deg(true_traj), label='Min-Jerk (Ground Truth)', color='blue')
-            plt.plot(np.rad2deg(pred_traj), label='NN Prediction', color='red', linestyle='--')
+            plt.plot(np.rad2deg(pred_traj), label=f'{generator_type.upper()} Prediction', color='red', linestyle='--')
             plt.axhline(y=start_deg, color='green', linestyle=':', alpha=0.5, label='Start Angle')
             plt.axhline(y=final_deg, color='purple', linestyle=':', alpha=0.5, label='Final Angle')
             plt.xlabel('Time Step')
             plt.ylabel('Angle (deg)')
-            plt.title(f'Trajectory Comparison: {start_deg}° → {final_deg}°')
+            plt.title(f'Trajectory Comparison ({generator_type.upper()}): {start_deg}° → {final_deg}°')
             plt.legend()
             plt.grid(True)
-            plt.savefig(results_dir / f'traj_gen_test_{i+1}.png')
+            plt.savefig(results_dir / f'traj_gen_{generator_type}_test_{i+1}.png')
             plt.close()
 
     _log.warning(f"Test plots saved to {results_dir}")
@@ -225,9 +240,10 @@ def train_trajectory_generator(
 
 def main():
     """Main function for trajectory generator training."""
-    parser = argparse.ArgumentParser(description="Train NN-based Trajectory Generator")
+    parser = argparse.ArgumentParser(description="Train ANN or GLE-based Trajectory Generator")
+    parser.add_argument('--type', type=str, choices=['ann', 'gle'], default='gle', help="Trajectory generator type")
     parser.add_argument('--samples', type=int, default=10000, help="Number of training samples")
-    parser.add_argument('--epochs', type=int, default=100, help="Number of training epochs")
+    parser.add_argument('--epochs', type=int, default=50, help="Number of training epochs")
     parser.add_argument('--batch-size', type=int, default=64, help="Batch size")
     parser.add_argument('--lr', type=float, default=0.001, help="Learning rate")
     parser.add_argument('--angle-min', type=int, default=0, help="Minimum angle (degrees)")
@@ -241,6 +257,7 @@ def main():
 
     train_trajectory_generator(
         params=params,
+        generator_type=args.type,
         num_samples=args.samples,
         num_epochs=args.epochs,
         batch_size=args.batch_size,
