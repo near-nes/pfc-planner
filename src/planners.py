@@ -20,7 +20,7 @@ class VisionNet(ABC, nn.Module):
     """Abstract base class for vision networks that predict angles and choices from images."""
 
     @abstractmethod
-    def forward(self, x):
+    def forward(self, x, target=None, beta=1.0):
         """Forward pass returning concatenated [angles, choice_logits]."""
         raise NotImplementedError
 
@@ -43,7 +43,7 @@ class ANNVisionNet(VisionNet):
         self.angle_regressor = nn.Linear(conv_output_size, self.params.num_angle_outputs)
         self.choice_classifier = nn.Linear(conv_output_size, self.params.num_choices)
 
-    def forward(self, x):
+    def forward(self, x, target=None, beta=1.0):
         features = self.conv_layers(x)
         angles = self.angle_regressor(features)
         choice_logits = self.choice_classifier(features)
@@ -145,6 +145,10 @@ class Planner(ABC):
         self.trajectory_generator = trajectory_generator
 
     @abstractmethod
+    def _run_vision_inference(self, input_tensor: torch.Tensor) -> torch.Tensor:
+        """Subclasses implement specific model inference (e.g., GLE iterations)."""
+        raise NotImplementedError
+
     def image_to_angles(self, img_path: Path) -> Tuple[float, float, str]:
         """
         Extract angles and choice from image using vision network.
@@ -154,7 +158,28 @@ class Planner(ABC):
             final_angle_rad: Final angle in radians
             choice: 'left' or 'right'
         """
-        raise NotImplementedError
+        if not img_path.exists():
+            raise FileNotFoundError(f"Input image not found at: {img_path}")
+        if not self.model_loaded:
+            raise RuntimeError("Model has not been loaded. Call `load_model()` first.")
+
+        input_image = Image.open(img_path).convert("RGB")
+        input_tensor = self.image_transform(input_image).unsqueeze(0).to(self.device)
+
+        with torch.no_grad():
+            output = self._run_vision_inference(input_tensor)
+
+        # Extract angles (in radians)
+        predicted_angles = output[:, :self.params.num_angle_outputs].squeeze(0).cpu().numpy()
+        start_angle = float(predicted_angles[0])
+        final_angle = float(predicted_angles[1])
+
+        # Extract choice
+        choice_logits = output[:, self.params.num_angle_outputs:]
+        choice_idx = torch.argmax(choice_logits, dim=1).item()
+        choice = self.params.choice_labels[choice_idx]
+
+        return start_angle, final_angle, choice
 
     def image_to_trajectory(self, img_path: Path) -> Tuple[np.ndarray, str]:
         """
@@ -187,29 +212,8 @@ class ANNPlanner(Planner):
         vision_net = ANNVisionNet(params=params)
         super().__init__(params, vision_net, trajectory_generator)
 
-    def image_to_angles(self, img_path: Path) -> Tuple[float, float, str]:
-        if not img_path.exists():
-            raise FileNotFoundError(f"Input image not found at: {img_path}")
-        if not self.model_loaded:
-            raise RuntimeError("Model has not been loaded. Call `load_model()` first.")
-
-        input_image = Image.open(img_path).convert("RGB")
-        input_tensor = self.image_transform(input_image).unsqueeze(0).to(self.device)
-
-        with torch.no_grad():
-            output = self.vision_net(input_tensor)
-
-        # Extract angles (in radians)
-        predicted_angles = output[:, :self.params.num_angle_outputs].squeeze(0).cpu().numpy()
-        start_angle = float(predicted_angles[0])
-        final_angle = float(predicted_angles[1])
-
-        # Extract choice
-        choice_logits = output[:, self.params.num_angle_outputs:]
-        choice_idx = torch.argmax(choice_logits, dim=1).item()
-        choice = 'left' if choice_idx == 0 else 'right'
-
-        return start_angle, final_angle, choice
+    def _run_vision_inference(self, input_tensor: torch.Tensor) -> torch.Tensor:
+        return self.vision_net(input_tensor)
 
 
 class GLEPlanner(Planner):
@@ -223,30 +227,11 @@ class GLEPlanner(Planner):
         vision_net = GLEVisionNet(params=params)
         super().__init__(params, vision_net, trajectory_generator)
 
-    def image_to_angles(self, img_path: Path) -> Tuple[float, float, str]:
-        if not img_path.exists():
-            raise FileNotFoundError(f"Input image not found at: {img_path}")
-        if not self.model_loaded:
-            raise RuntimeError("Model has not been loaded. Call `load_model()` first.")
-
-        input_image = Image.open(img_path).convert("RGB")
-        input_tensor = self.image_transform(input_image).unsqueeze(0).to(self.device)
-
-        with torch.no_grad():
-            for _ in range(self.params.gle_update_steps):
-                output = self.vision_net(input_tensor)
-
-        # Extract angles (in radians)
-        predicted_angles = output[:, :self.params.num_angle_outputs].squeeze(0).cpu().numpy()
-        start_angle = float(predicted_angles[0])
-        final_angle = float(predicted_angles[1])
-
-        # Extract choice
-        choice_logits = output[:, self.params.num_angle_outputs:]
-        choice_idx = torch.argmax(choice_logits, dim=1).item()
-        choice = 'left' if choice_idx == 0 else 'right'
-
-        return start_angle, final_angle, choice
+    def _run_vision_inference(self, input_tensor: torch.Tensor) -> torch.Tensor:
+        output = None
+        for _ in range(self.params.gle_update_steps):
+            output = self.vision_net(input_tensor)
+        return output
 
 
 # Legacy aliases for backward compatibility

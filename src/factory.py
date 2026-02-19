@@ -50,6 +50,8 @@ def get_planner(
         # Normalize image_size to tuple for comparison (JSON serializes tuples as lists)
         if "image_size" in saved and isinstance(saved["image_size"], list):
             saved["image_size"] = tuple(saved["image_size"])
+        if "choice_labels" in saved and isinstance(saved["choice_labels"], list):
+            saved["choice_labels"] = tuple(saved["choice_labels"])
 
         requested = asdict(params)
         diffs = {

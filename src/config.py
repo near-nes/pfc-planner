@@ -2,7 +2,7 @@
 Centralized configuration for the PFC Planner project.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Tuple
 
 
@@ -13,6 +13,7 @@ class PlannerParams:
     # --- Model Hyperparameters ---
     model_type: str = "gle"  # 'ann' or 'gle'
     num_choices: int = 2
+    choice_labels: Tuple[str, ...] = ("left", "right")
     num_angle_outputs: int = 2  # start angle and final angle
     image_size: Tuple[int, int] = (100, 100)
 

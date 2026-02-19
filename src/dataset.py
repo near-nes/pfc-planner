@@ -22,7 +22,6 @@ class RobotArmDataset(torch.utils.data.Dataset):
         self.data_dir = data_dir
         self.params = params
         self.transform = transform
-        self.choice_to_idx = {'left': 0, 'right': 1}
         self.task_data = self._load_all_task_data()
 
     def __len__(self) -> int:
@@ -43,12 +42,10 @@ class RobotArmDataset(torch.utils.data.Dataset):
             image = self.transform(image)
 
         # Convert angles from degrees to radians
-        start_angle_rad = np.deg2rad(item['initial_angle_deg'])
-        final_angle_rad = np.deg2rad(item['final_angle_deg'])
-        target_angles = torch.tensor([start_angle_rad, final_angle_rad], dtype=torch.float)
+        target_angles = torch.tensor([np.deg2rad(item['initial_angle_deg']), np.deg2rad(item['final_angle_deg'])], dtype=torch.float)
 
-        # Target for choice classification
-        target_choice_idx = self.choice_to_idx[item['target_choice']]
+        # Use centralized labels from params
+        target_choice_idx = self.params.choice_labels.index(item['target_choice'])
         target_choice = torch.tensor(target_choice_idx, dtype=torch.long)
 
         return image, target_angles, target_choice

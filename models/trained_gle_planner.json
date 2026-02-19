@@ -1,6 +1,10 @@
 {
     "model_type": "gle",
     "num_choices": 2,
+    "choice_labels": [
+        "left",
+        "right"
+    ],
     "num_angle_outputs": 2,
     "image_size": [
         100,
@@ -19,6 +23,6 @@
     "time_grasp": 100.0,
     "time_post": 100.0,
     "resolution": 1.0,
-    "git_commit": "81e12da-dirty",
+    "git_commit": "bde0e43-dirty",
     "seed": 0
 }
