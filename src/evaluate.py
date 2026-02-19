@@ -41,14 +41,20 @@ def main():
 
     print(f"Loaded {len(eval_dataset)} samples. Trajectory length: {current_params.trajectory_length}")
 
-    # Calculate comparison index
-    post_phase_steps = int((current_params.time_grasp + current_params.time_post) / current_params.resolution)
-    angle_comparison_index = -post_phase_steps - 1 if post_phase_steps > 0 else -1
-    angle_tolerance_deg = 3.0
-    print(f"Comparing angles at index {angle_comparison_index} at the end of movement with tolerance ±{angle_tolerance_deg} degrees.")
+    # Calculate comparison indices
+    # Start index: time_prep + 1 step
+    start_angle_idx = int(current_params.time_prep / current_params.resolution) + 1
+    # Final index: - (time grasp + time post) - 1 step
+    final_angle_idx = -int((current_params.time_grasp + current_params.time_post) / current_params.resolution) - 1
+
+    print(f"Comparing angles at start index {start_angle_idx} and final index {final_angle_idx}.")
 
     # Evaluate
-    correct_choices, correct_angles = 0, 0
+    correct_choices = 0
+    correct_start_angles = 0
+    correct_final_angles = 0
+    angle_tolerance_deg = 5.0
+
     for item_metadata in eval_dataset.task_data:
         image_path = Path(item_metadata['image_path'])
         predicted_trajectory, predicted_choice = planner.image_to_trajectory(image_path)
@@ -56,16 +62,27 @@ def main():
         if predicted_choice == item_metadata['target_choice']:
             correct_choices += 1
 
-        pred_angle = predicted_trajectory[angle_comparison_index]
-        true_angle = item_metadata['ground_truth_trajectory_rad'][angle_comparison_index]
-        if np.isclose(pred_angle, true_angle, atol=np.deg2rad(angle_tolerance_deg)):
-            correct_angles += 1
+        # Check accuracy at start index (before reach)
+        pred_start_angle = predicted_trajectory[start_angle_idx]
+        true_start_angle = item_metadata['ground_truth_trajectory_rad'][start_angle_idx]
+        if np.isclose(pred_start_angle, true_start_angle, atol=np.deg2rad(angle_tolerance_deg)):
+            correct_start_angles += 1
+
+        # Check accuracy at final index (after reach)
+        pred_final_angle = predicted_trajectory[final_angle_idx]
+        true_final_angle = item_metadata['ground_truth_trajectory_rad'][final_angle_idx]
+        if np.isclose(pred_final_angle, true_final_angle, atol=np.deg2rad(angle_tolerance_deg)):
+            correct_final_angles += 1
 
         # Plot trajectory
         plt.figure(figsize=(10, 6))
         plt.plot(np.rad2deg(item_metadata['ground_truth_trajectory_rad']), label='True', color='blue')
         plt.plot(np.rad2deg(predicted_trajectory), label='Predicted', color='red', linestyle='--')
-        plt.axvline(x=len(predicted_trajectory) + angle_comparison_index, color='green', linestyle=':', label='Angle Comparison Point')
+
+        # Vertical lines for comparison points
+        plt.axvline(x=start_angle_idx, color='green', linestyle=':', label='Start Comparison Point')
+        plt.axvline(x=len(predicted_trajectory) + final_angle_idx, color='orange', linestyle=':', label='Final Comparison Point')
+
         plt.title(f"Trajectory for {image_path.name}")
         plt.xlabel("Time Step")
         plt.ylabel("Angle (deg)")
@@ -74,12 +91,16 @@ def main():
         plt.savefig(RESULTS_DIR / f"{image_path.stem}_trajectory.png")
         plt.close()
 
-    # Print results
+    # Calculate percentages
     choice_accuracy = (correct_choices / len(eval_dataset)) * 100
-    angle_accuracy = (correct_angles / len(eval_dataset)) * 100
+    start_angle_accuracy = (correct_start_angles / len(eval_dataset)) * 100
+    final_angle_accuracy = (correct_final_angles / len(eval_dataset)) * 100
+
+    # Print results
     print(f"\n--- Evaluation Complete ---")
     print(f"Choice Accuracy: {choice_accuracy:.2f}%")
-    print(f"Final Angle Accuracy (at end of movement): {angle_accuracy:.2f}%")
+    print(f"Start Angle Accuracy (±{angle_tolerance_deg}°): {start_angle_accuracy:.2f}%")
+    print(f"Final Angle Accuracy (±{angle_tolerance_deg}°): {final_angle_accuracy:.2f}%")
     print(f"Plots saved to '{RESULTS_DIR.resolve()}'")
 
 
