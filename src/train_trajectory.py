@@ -17,7 +17,7 @@ from torch.utils.data import Dataset, DataLoader
 import matplotlib.pyplot as plt
 
 from .config import PlannerParams, default_params
-from .train import get_project_root, get_git_commit_hash
+from .train_vision import get_project_root, get_git_commit_hash
 from .trajectory_generators import ANNTrajectoryGenerator, GLETrajectoryGenerator, MinJerkTrajectoryGenerator
 import structlog
 
@@ -85,9 +85,9 @@ class TrajectoryDataset(Dataset):
 def train_trajectory_generator(
     params: PlannerParams,
     generator_type: str = "gle",
-    num_samples: int = 10000,
+    num_samples: int = 1000,
     num_epochs: int = 100,
-    batch_size: int = 64,
+    batch_size: int = 128,
     learning_rate: float = 0.001,
     angle_range: tuple = (0, 180),
     project_root: Path = None,

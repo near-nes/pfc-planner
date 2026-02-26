@@ -8,7 +8,13 @@ import structlog
 
 from .config import PlannerParams
 from .planners import ANNPlanner, GLEPlanner
-from .train import get_git_commit_hash, get_project_root, run_training
+from .training import (
+    train_vision_network,
+    train_trajectory_generator,
+    get_project_root,
+    get_git_commit_hash
+)
+from .trajectory_generators import get_trajectory_generator
 
 _log: structlog.stdlib.BoundLogger = structlog.get_logger("pfc_planner.factory")
 
@@ -20,17 +26,13 @@ def get_planner(
     skip_cache: bool = False,
 ):
     """
-    Get a planner, training it if necessary.
-
-    A planner consists of:
-    1. Vision network: for extracting angles and choice from images
-    2. Trajectory generator: for converting angles to full trajectories
+    Get a fully configured planner, training components if necessary.
 
     Args:
-        params: PlannerParams with required configuration (including model_type)
-        model_dir: Override default model directory (default: submodule's models/)
-        project_root: Override project root (default: auto-detect via get_project_root())
-        skip_cache: If True, force retraining even if matching model exists (default: False)
+        params: PlannerParams with required configuration.
+        model_dir: Directory where models are stored.
+        project_root: Root directory of the project.
+        skip_cache: If True, force retraining of components.
     """
     if project_root is None:
         project_root = get_project_root()
@@ -39,62 +41,65 @@ def get_planner(
 
     params.git_commit = get_git_commit_hash(project_root)
 
-    model_type = params.model_type
-    model_path = model_dir / f"trained_{model_type}_planner.pth"
-    config_path = model_dir / f"trained_{model_type}_planner.json"
+    # 1. Ensure Vision Network is ready
+    vision_model_path = model_dir / f"trained_{params.model_type}_planner.pth"
+    vision_config_path = model_dir / f"trained_{params.model_type}_planner.json"
 
-    if not skip_cache and model_path.exists() and config_path.exists():
+    if skip_cache or not _is_vision_model_valid(params, vision_model_path, vision_config_path):
+        _log.warning("Vision model missing or invalid, starting training...", model_type=params.model_type)
+        train_vision_network(params, project_root, model_dir)
+
+    # 2. Ensure Trajectory Generator is ready (if learning-based)
+    traj_gen_type = params.trajectory_generator_type
+    traj_model_path = None
+    if traj_gen_type in ["ann", "gle"]:
+        traj_model_path = model_dir / f"trained_{traj_gen_type}_trajectory_generator.pth"
+        if skip_cache or not traj_model_path.exists():
+            _log.warning("Trajectory generator model missing, starting training...", type=traj_gen_type)
+            train_trajectory_generator(params, generator_type=traj_gen_type, project_root=project_root, model_dir=model_dir)
+
+    # 3. Assemble and return the planner
+    return _assemble_planner(params, vision_model_path, traj_model_path)
+
+
+def _is_vision_model_valid(params: PlannerParams, model_path: Path, config_path: Path) -> bool:
+    """Check if the existing vision model matches requested parameters."""
+    if not (model_path.exists() and config_path.exists()):
+        return False
+
+    try:
         with open(config_path) as f:
             saved = json.load(f)
 
-        # Normalize image_size to tuple for comparison (JSON serializes tuples as lists)
-        if "image_size" in saved and isinstance(saved["image_size"], list):
-            saved["image_size"] = tuple(saved["image_size"])
-        if "choice_labels" in saved and isinstance(saved["choice_labels"], list):
-            saved["choice_labels"] = tuple(saved["choice_labels"])
-
         requested = asdict(params)
-        diffs = {
-            k: (v, saved.get(k)) for k, v in requested.items() if v != saved.get(k)
-        }
-        if "git_commit" in diffs:
-            (current, train) = diffs.pop("git_commit")
-            _log.warning(
-                f"planner git commit changed from training",
-                training_hash=train,
-                current_hash=current,
-            )
+        # Check critical parameters that would require a different architecture
+        for k in ["model_type", "image_size", "num_choices", "num_angle_outputs"]:
+            val = requested.get(k)
+            # Normalize tuples (from dataclass) to lists (from JSON)
+            if isinstance(val, tuple): val = list(val)
+            if val != saved.get(k):
+                _log.debug(f"Parameter mismatch for {k}: {val} vs {saved.get(k)}")
+                return False
+        return True
+    except Exception as e:
+        _log.error(f"Error checking model validity: {e}")
+        return False
 
-        if diffs:
-            diff_strs = [f"{k}: {v[0]} vs {v[1]}" for k, v in diffs.items()]
-            _log.warning(
-                "Critical parameter mismatch, retraining required",
-                differences=diff_strs,
-            )
-        else:
-            # No differences, load existing model
-            return _load_planner(params, model_path)
-    elif skip_cache:
-        _log.warning(
-            "Cache skipped, forcing retraining",
-            model_type=model_type,
-        )
 
-    _log.warning(
-        "No matching model found, starting training",
-        model_type=model_type,
-        model_path=str(model_path),
+def _assemble_planner(params: PlannerParams, vision_model_path: Path, traj_model_path: Path = None):
+    """Assembles the planner with its components."""
+    # Initialize trajectory generator
+    traj_gen = get_trajectory_generator(
+        params.trajectory_generator_type,
+        params,
+        traj_model_path
     )
-    run_training(params, project_root, model_dir)
-    return _load_planner(params, model_path)
 
-
-def _load_planner(params: PlannerParams, model_path: Path):
-    """Load a planner with its vision network and trajectory generator."""
+    # Initialize planner with the vision architecture
     if params.model_type == "gle":
-        planner = GLEPlanner(params=params)
+        planner = GLEPlanner(params=params, trajectory_generator=traj_gen)
     else:
-        planner = ANNPlanner(params=params)
+        planner = ANNPlanner(params=params, trajectory_generator=traj_gen)
 
-    planner.load_model(model_path)
+    planner.load_model(vision_model_path)
     return planner
