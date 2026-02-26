@@ -78,7 +78,6 @@ class RobotArmDataset(torch.utils.data.Dataset):
         Parses all image filenames, generates trajectories, and returns a list of task metadata.
         """
         task_data = []
-        # Matches all .bmp files to find the new numeric pattern
         image_files = glob.glob(os.path.join(self.data_dir, '*.bmp'))
         task_map_path = os.path.join(self.data_dir, 'task_diff.txt')
         task_mapping = self._load_task_mapping(task_map_path)
@@ -86,7 +85,6 @@ class RobotArmDataset(torch.utils.data.Dataset):
         for img_path in image_files:
             start_angle, target_angle, color = self._parse_filename(img_path)
 
-            # If parsing fails (e.g. file starts with 'start_'), it returns None and skips
             if start_angle is None or target_angle is None:
                 continue
 
@@ -123,7 +121,6 @@ class RobotArmDataset(torch.utils.data.Dataset):
         if len(parts) != 3:
             return None, None, None
         try:
-            # This will fail and return None for files starting with 'start_'
             return int(parts[0]), int(parts[1]), parts[2]
         except (ValueError, IndexError):
             return None, None, None
