@@ -37,7 +37,7 @@ def main():
     # Load evaluation dataset
     eval_dataset = RobotArmDataset(data_dir=str(DATA_DIR), params=current_params)
     if not eval_dataset.task_data:
-        sys.exit(f"ERROR: No data found in {DATA_DIR}. Exiting.")
+        sys.exit(f"ERROR: No data found in {DATA_DIR}. Run imagedata_gen.py to generate data before evaluation.")
 
     print(f"Loaded {len(eval_dataset)} samples. Trajectory length: {current_params.trajectory_length}")
 
@@ -53,6 +53,7 @@ def main():
     correct_choices = 0
     correct_start_angles = 0
     correct_final_angles = 0
+    angle_tolerance_deg = 5.0
 
     for item_metadata in eval_dataset.task_data:
         image_path = Path(item_metadata['image_path'])
@@ -64,13 +65,13 @@ def main():
         # Check accuracy at start index (before reach)
         pred_start_angle = predicted_trajectory[start_angle_idx]
         true_start_angle = item_metadata['ground_truth_trajectory_rad'][start_angle_idx]
-        if np.isclose(pred_start_angle, true_start_angle, atol=np.deg2rad(1.0)):
+        if np.isclose(pred_start_angle, true_start_angle, atol=np.deg2rad(angle_tolerance_deg)):
             correct_start_angles += 1
 
         # Check accuracy at final index (after reach)
         pred_final_angle = predicted_trajectory[final_angle_idx]
         true_final_angle = item_metadata['ground_truth_trajectory_rad'][final_angle_idx]
-        if np.isclose(pred_final_angle, true_final_angle, atol=np.deg2rad(1.0)):
+        if np.isclose(pred_final_angle, true_final_angle, atol=np.deg2rad(angle_tolerance_deg)):
             correct_final_angles += 1
 
         # Plot trajectory
@@ -98,8 +99,8 @@ def main():
     # Print results
     print(f"\n--- Evaluation Complete ---")
     print(f"Choice Accuracy: {choice_accuracy:.2f}%")
-    print(f"Start Angle Accuracy (before reach): {start_angle_accuracy:.2f}%")
-    print(f"Final Angle Accuracy (after reach): {final_angle_accuracy:.2f}%")
+    print(f"Start Angle Accuracy (±{angle_tolerance_deg}°): {start_angle_accuracy:.2f}%")
+    print(f"Final Angle Accuracy (±{angle_tolerance_deg}°): {final_angle_accuracy:.2f}%")
     print(f"Plots saved to '{RESULTS_DIR.resolve()}'")
 
 

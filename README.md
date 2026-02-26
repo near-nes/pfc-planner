@@ -18,16 +18,21 @@ Currently, there are two planners implemented:
 ## How to use
 
 ### Inside the Docker Container
-The code in this repository is supposed to be run from within [near-nes/controller](https://github.com/near-nes/controller) docker container's project root `/sim/controller` via:
-
+The code in this repository is supposed to be run from within [near-nes/controller](https://github.com/near-nes/controller) docker container's project root `/sim/controller`.
+Before running the model training and evaluation scripts, ensure to generate the required image dataset by executing:
 ```bash
-python -m submodules.pfc_planner.src.train --model gle
+cd submodules/pfc_planner && python imagedata_gen.py
+```
+
+Then train the GLEPlanner with:
+```bash
+python -m submodules.pfc_planner.src.train
 ```
 
 To test the pretrained and saved GLEPlanner model, run:
 
 ```bash
-python -m submodules.pfc_planner.src.evaluate --model gle
+python -m submodules.pfc_planner.src.evaluate
 ```
 
 ### Locally
@@ -43,10 +48,10 @@ source .venv/bin/activate
 
 Then run train the GLEPlanner outside of the docker container with:
 ```bash
-python -m src.train --model gle
+python -m src.train
 ```
 
 To test the pretrained and saved GLEPlanner model locally, run:
 ```bash
-python -m src.evaluate --model gle
+python -m src.evaluate
 ```

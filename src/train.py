@@ -2,7 +2,7 @@ import sys
 import argparse
 import json
 import subprocess
-from dataclasses import asdict, dataclass
+from dataclasses import asdict
 from pathlib import Path
 
 import torch
@@ -75,12 +75,13 @@ def run_training(params: PlannerParams, project_root: Path = None, model_dir: Pa
     ]))
 
     if len(train_dataset) == 0:
-        _log.debug(f"ERROR: No data found in {DATA_DIR}. Aborting training.")
+        _log.debug(f"ERROR: No data found in {DATA_DIR}. Run imagedata_gen.py to generate data before evaluation.")
         return
 
     _log.debug(f"Loaded {len(train_dataset)} samples. Trajectory length: {params.trajectory_length}")
 
-    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=len(train_dataset), shuffle=True)
+    # Use batch_size from params
+    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=params.batch_size, shuffle=True)
 
     if params.model_type == 'ann':
         net = ANNPlannerNet(params=params).to(device)
@@ -130,6 +131,10 @@ def run_training(params: PlannerParams, project_root: Path = None, model_dir: Pa
 
         if (epoch + 1) % 10 == 0 or epoch == 0:
             _log.debug(f"Epoch {epoch+1: >3}/{params.num_epochs} | Total Loss: {epoch_loss:.6f} | Traj Loss: {epoch_traj_loss:.6f} | Choice Loss: {epoch_choice_loss:.6f}")
+
+        # checkpoint model every 10 epochs
+        # if (epoch + 1) % 10 == 0:
+        #     torch.save(net.state_dict(), MODELS_DIR / f"checkpoint_{params.model_type}_planner_epoch{epoch+1}.pth")
 
     _log.debug("\n--- Training Finished ---")
     model_save_path = MODELS_DIR / f"trained_{params.model_type}_planner.pth"
