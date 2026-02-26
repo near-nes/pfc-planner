@@ -62,6 +62,7 @@ def main():
     correct_choices = 0
     correct_start_angles = 0
     correct_final_angles = 0
+    angle_tolerance_deg = 5.0
 
     all_true_start = []
     all_pred_start = []
@@ -89,9 +90,9 @@ def main():
             correct_choices += 1
 
         # Check angle accuracy (within 5 degrees tolerance)
-        if np.isclose(pred_start_rad, true_start_rad, atol=np.deg2rad(5.0)):
+        if np.isclose(pred_start_rad, true_start_rad, atol=np.deg2rad(angle_tolerance_deg)):
             correct_start_angles += 1
-        if np.isclose(pred_final_rad, true_final_rad, atol=np.deg2rad(5.0)):
+        if np.isclose(pred_final_rad, true_final_rad, atol=np.deg2rad(angle_tolerance_deg)):
             correct_final_angles += 1
 
         # Optionally plot trajectories
@@ -125,8 +126,8 @@ def main():
     # Print results
     print(f"\n--- Evaluation Complete ---")
     print(f"Choice Accuracy: {choice_accuracy:.2f}%")
-    print(f"Start Angle Accuracy (±5°): {start_angle_accuracy:.2f}%")
-    print(f"Final Angle Accuracy (±5°): {final_angle_accuracy:.2f}%")
+    print(f"Start Angle Accuracy (±{angle_tolerance_deg}°): {start_angle_accuracy:.2f}%")
+    print(f"Final Angle Accuracy (±{angle_tolerance_deg}°): {final_angle_accuracy:.2f}%")
     print(f"Start Angle MAE: {start_mae:.2f}°")
     print(f"Final Angle MAE: {final_mae:.2f}°")
 

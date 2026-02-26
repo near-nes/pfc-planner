@@ -62,7 +62,6 @@ class RobotArmDataset(torch.utils.data.Dataset):
         for img_path in image_files:
             start_angle, target_angle, color = self._parse_filename(img_path)
 
-            # If parsing fails (e.g. file starts with 'start_'), skip
             if start_angle is None or target_angle is None:
                 continue
 
