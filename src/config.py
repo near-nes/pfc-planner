@@ -23,7 +23,7 @@ class PlannerParams:
     gle_update_steps: int = 10
 
     # --- Training Parameters ---
-    learning_rate: float = 0.005
+    learning_rate: float = 0.001
     num_epochs: int = 300
     batch_size: int = 64
 

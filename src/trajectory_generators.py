@@ -249,7 +249,7 @@ class GLETrajectoryNet(GLEAbstractNet, nn.Module):
         """
         e = torch.zeros_like(output)
         # Trajectory regression error
-        e[:, :self.output_size] = 0.01 * (target[:, :self.output_size] - output[:, :self.output_size])
+        e[:, :self.output_size] = (target[:, :self.output_size] - output[:, :self.output_size])
         return beta * e
 
 

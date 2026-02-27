@@ -76,7 +76,7 @@ class GLEVisionNet(GLEAbstractNet, VisionNet):
     def compute_target_error(self, output, target, beta):
         e = torch.zeros_like(output)
         # Error for angle prediction (first 2 outputs)
-        e[:, :self.params.num_angle_outputs] = 0.01 * (target[:, :self.params.num_angle_outputs] - output[:, :self.params.num_angle_outputs])
+        e[:, :self.params.num_angle_outputs] = (target[:, :self.params.num_angle_outputs] - output[:, :self.params.num_angle_outputs])
 
         # Error for choice classification (remaining outputs)
         choice_probs = torch.softmax(output[:, self.params.num_angle_outputs:], dim=1)
