@@ -1,4 +1,5 @@
 import json
+import argparse
 import subprocess
 from dataclasses import asdict
 from pathlib import Path
@@ -10,7 +11,7 @@ from torchvision import transforms
 
 from .planners import ANNVisionNet, GLEVisionNet
 from .dataset import RobotArmDataset
-from .config import PlannerParams
+from .config import PlannerParams, default_params
 import structlog
 
 _log: structlog.BoundLogger = structlog.get_logger("[pfc_planner.train_vision]")
@@ -118,3 +119,32 @@ def train_vision_network(params: PlannerParams, project_root: Path = None, model
         json.dump(asdict(params), f, indent=4)
 
     _log.info(f"Vision network and configuration saved to {MODELS_DIR}")
+
+
+def main():
+    """Main function for vision network training."""
+    parser = argparse.ArgumentParser(description="Train ANN or GLE-based Vision Network")
+    parser.add_argument('--type', type=str, choices=['ann', 'gle'], default='gle', help="Vision network type")
+    parser.add_argument('--epochs', type=int, default=200, help="Number of training epochs")
+    parser.add_argument('--batch-size', type=int, default=128, help="Batch size")
+    parser.add_argument('--lr', type=float, default=0.005, help="Learning rate")
+    args = parser.parse_args()
+
+    # Use default params for vision training settings
+    params = default_params
+    params.model_type = args.type
+    params.num_epochs = args.epochs
+    params.batch_size = args.batch_size
+    params.learning_rate = args.lr
+
+    project_root = get_project_root()
+    params.git_commit = get_git_commit_hash(project_root)
+
+    train_vision_network(
+        params=params,
+        project_root=project_root
+    )
+
+
+if __name__ == "__main__":
+    main()

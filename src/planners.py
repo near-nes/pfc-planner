@@ -232,8 +232,3 @@ class GLEPlanner(Planner):
         for _ in range(self.params.gle_update_steps):
             output = self.vision_net(input_tensor)
         return output
-
-
-# Legacy aliases for backward compatibility
-ANNPlannerNet = ANNVisionNet
-GLEPlannerNet = GLEVisionNet

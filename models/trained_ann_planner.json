@@ -1,5 +1,5 @@
 {
-    "model_type": "gle",
+    "model_type": "ann",
     "num_choices": 2,
     "choice_labels": [
         "left",

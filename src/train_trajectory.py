@@ -88,7 +88,7 @@ def train_trajectory_generator(
     num_samples: int = 1000,
     num_epochs: int = 100,
     batch_size: int = 128,
-    learning_rate: float = 0.001,
+    learning_rate: float = 0.005,
     angle_range: tuple = (0, 180),
     project_root: Path = None,
     model_dir: Path = None
@@ -242,10 +242,10 @@ def main():
     """Main function for trajectory generator training."""
     parser = argparse.ArgumentParser(description="Train ANN or GLE-based Trajectory Generator")
     parser.add_argument('--type', type=str, choices=['ann', 'gle'], default='gle', help="Trajectory generator type")
-    parser.add_argument('--samples', type=int, default=10000, help="Number of training samples")
-    parser.add_argument('--epochs', type=int, default=50, help="Number of training epochs")
-    parser.add_argument('--batch-size', type=int, default=64, help="Batch size")
-    parser.add_argument('--lr', type=float, default=0.001, help="Learning rate")
+    parser.add_argument('--samples', type=int, default=1000, help="Number of training samples")
+    parser.add_argument('--epochs', type=int, default=100, help="Number of training epochs")
+    parser.add_argument('--batch-size', type=int, default=128, help="Batch size")
+    parser.add_argument('--lr', type=float, default=0.005, help="Learning rate")
     parser.add_argument('--angle-min', type=int, default=0, help="Minimum angle (degrees)")
     parser.add_argument('--angle-max', type=int, default=180, help="Maximum angle (degrees)")
     args = parser.parse_args()
