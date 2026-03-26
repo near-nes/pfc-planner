@@ -1,15 +1,13 @@
 """
 Trajectory generation modules that convert start/final angles to full trajectories.
 """
-import sys
-import os
 from abc import ABC, abstractmethod
-from typing import List, Optional
 from pathlib import Path
 
 import numpy as np
 import torch
 import torch.nn as nn
+from minjerk_dynamics import generate_trajectory
 
 from .config import PlannerParams
 from .gle.abstract_net import GLEAbstractNet
@@ -19,26 +17,6 @@ from .gle.utils import get_phi_and_derivative
 import structlog
 
 _log: structlog.BoundLogger = structlog.get_logger("[pfc_planner.trajectory_generators]")
-
-# Path to the external controller package
-_CONTROLLER_PATH = os.environ.get("CONTROLLER_PATH", "/sim/controller/complete_control")
-
-try:
-    if not os.path.isdir(_CONTROLLER_PATH):
-        raise ImportError(f"Controller path '{_CONTROLLER_PATH}' not found or not a directory.")
-
-    sys.path.insert(0, _CONTROLLER_PATH)
-    from complete_control.config.core_models import OracleData, SimulationParams
-    from complete_control.utils_common.generate_signals_minjerk import generate_trajectory_minjerk
-    _log.warning(f"Successfully imported controller from '{_CONTROLLER_PATH}'.")
-
-except ImportError as e:
-    _log.warning(f"Controller import failed: {e}. Using local fallback implementation.")
-    from .minjerk_fallback import (
-        FallbackOracleData as OracleData,
-        FallbackSimulationParams as SimulationParams,
-        generate_minjerk_fallback as generate_trajectory_minjerk,
-    )
 
 
 class TrajectoryGeneratorBase(ABC):
@@ -77,32 +55,15 @@ class MinJerkTrajectoryGenerator(TrajectoryGeneratorBase):
 
     def angles_to_trajectory(self, start_angle_rad: float, final_angle_rad: float) -> np.ndarray:
         """Generate min-jerk trajectory from start to final angle."""
-        # Convert to degrees for the controller
-        start_angle_deg = np.rad2deg(start_angle_rad)
-        final_angle_deg = np.rad2deg(final_angle_rad)
-
-        oracle_data = OracleData(
-            init_joint_angle=start_angle_deg,
-            tgt_joint_angle=final_angle_deg
+        return generate_trajectory(
+            init_angle_rad=start_angle_rad,
+            target_angle_rad=final_angle_rad,
+            resolution_ms=self.params.resolution,
+            time_prep_ms=self.params.time_prep,
+            time_move_ms=self.params.time_move,
+            time_locked_with_feedback_ms=self.params.time_locked_with_feedback,
+            time_post_ms=self.params.time_grasp + self.params.time_post,
         )
-
-        sim_params = SimulationParams(
-            oracle=oracle_data,
-            time_prep=self.params.time_prep,
-            time_move=self.params.time_move,
-            time_locked_with_feedback=self.params.time_locked_with_feedback,
-            time_grasp=self.params.time_grasp,
-            time_post=self.params.time_post,
-            n_trials=1,
-            frozen=False,
-            resolution=self.params.resolution,
-        )
-
-        # Generate trajectory (returns in radians)
-        trajectory_rad = generate_trajectory_minjerk(sim_params)
-        traj_arr = np.array(trajectory_rad).flatten()
-
-        return traj_arr
 
 
 class ANNTrajectoryGenerator(TrajectoryGeneratorBase):
