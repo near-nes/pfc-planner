@@ -64,8 +64,7 @@ def train_vision_network(params: PlannerParams, project_root: Path = None, model
     )
 
     if len(train_dataset) == 0:
-        _log.error(f"No data found in {DATA_DIR}. Cannot train.")
-        return
+        raise FileNotFoundError(f"No data found in {DATA_DIR}. Please generate data first.")
 
     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=params.batch_size, shuffle=True)
 

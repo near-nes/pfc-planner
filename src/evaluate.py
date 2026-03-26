@@ -38,8 +38,7 @@ def main():
     # Load evaluation dataset
     eval_dataset = RobotArmDataset(data_dir=str(DATA_DIR), params=params)
     if not eval_dataset.task_data:
-        print(f"ERROR: No data found in {DATA_DIR}. Please generate data first.")
-        return
+        raise FileNotFoundError(f"No data found in {DATA_DIR}. Please generate data first.")
 
     print(f"Evaluating {len(eval_dataset)} samples...")
 
