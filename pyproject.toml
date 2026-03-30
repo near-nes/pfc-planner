@@ -12,6 +12,10 @@ dependencies = [
     "numpy",
     "structlog",
     "Pillow",
+]
+
+[project.optional-dependencies]
+standalone = [
     "minjerk-dynamics @ git+https://github.com/near-nes/controller.git#subdirectory=complete_control/shared/minjerk",
 ]
 
