@@ -18,7 +18,7 @@ def main():
     parser.add_argument('--model', type=str, choices=['ann', 'gle'],
                         default=default_params.model_type, help="Vision model type")
     parser.add_argument('--traj-gen', type=str, choices=['minjerk', 'ann', 'gle'],
-                        default='gle', help="Trajectory generator type")
+                        default=default_params.trajectory_generator_type, help="Trajectory generator type")
     parser.add_argument('--plot-trajectories', action='store_true', help="Save trajectory plots")
     args = parser.parse_args()
 

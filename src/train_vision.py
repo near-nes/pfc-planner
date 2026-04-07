@@ -124,9 +124,9 @@ def main():
     """Main function for vision network training."""
     parser = argparse.ArgumentParser(description="Train ANN or GLE-based Vision Network")
     parser.add_argument('--type', type=str, choices=['ann', 'gle'], default='gle', help="Vision network type")
-    parser.add_argument('--epochs', type=int, default=200, help="Number of training epochs")
-    parser.add_argument('--batch-size', type=int, default=128, help="Batch size")
-    parser.add_argument('--lr', type=float, default=0.005, help="Learning rate")
+    parser.add_argument('--epochs', type=int, default=default_params.num_epochs, help="Number of training epochs")
+    parser.add_argument('--batch-size', type=int, default=default_params.batch_size, help="Batch size")
+    parser.add_argument('--lr', type=float, default=default_params.learning_rate, help="Learning rate")
     args = parser.parse_args()
 
     # Use default params for vision training settings

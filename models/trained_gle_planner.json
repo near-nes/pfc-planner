@@ -14,7 +14,7 @@
     "gle_beta": 1.0,
     "gle_update_steps": 10,
     "learning_rate": 0.005,
-    "num_epochs": 200,
+    "num_epochs": 300,
     "batch_size": 128,
     "trajectory_generator_type": "gle",
     "time_prep": 650.0,
@@ -23,6 +23,6 @@
     "time_grasp": 100.0,
     "time_post": 100.0,
     "resolution": 1.0,
-    "git_commit": "33eda3f-dirty",
+    "git_commit": "6f7dfc6",
     "seed": 0
 }

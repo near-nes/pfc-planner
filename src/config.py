@@ -25,7 +25,7 @@ class PlannerParams:
     # --- Training Parameters ---
     learning_rate: float = 0.005
     num_epochs: int = 300
-    batch_size: int = 64
+    batch_size: int = 128
 
     # --- Trajectory Generation Parameters (for minjerk) ---
     trajectory_generator_type: str = "gle"  # 'minjerk', 'ann' or 'gle'
