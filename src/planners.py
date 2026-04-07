@@ -131,7 +131,7 @@ class Planner(ABC):
             self.vision_net.eval()
             self.model_loaded = True
         except RuntimeError as e:
-            print(f"Error loading model. Architecture mismatch or corrupted file.")
+            print("Error loading model. Architecture mismatch or corrupted file.")
             raise e
 
     def save_model(self, model_path: Path):

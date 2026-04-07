@@ -62,7 +62,12 @@ class RobotArmDataset(torch.utils.data.Dataset):
         for img_path in image_files:
             start_angle, target_angle, color = self._parse_filename(img_path)
 
-            if start_angle is None or target_angle is None:
+            if start_angle is None or target_angle is None or color is None:
+                continue
+
+            target_choice = task_mapping.get(color)
+            if target_choice is None:
+                _log.warning(f"Skipping {img_path}: color '{color}' not in task mapping")
                 continue
 
             task_data.append({
@@ -70,7 +75,7 @@ class RobotArmDataset(torch.utils.data.Dataset):
                 'color': color,
                 'initial_angle_deg': float(start_angle),
                 'final_angle_deg': float(target_angle),
-                'target_choice': task_mapping.get(color, 'unknown'),
+                'target_choice': target_choice,
             })
 
         _log.warning(f"Loaded {len(task_data)} task samples from {self.data_dir}")

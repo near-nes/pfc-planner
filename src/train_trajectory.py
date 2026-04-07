@@ -21,7 +21,25 @@ from .train_vision import get_project_root, get_git_commit_hash
 from .trajectory_generators import ANNTrajectoryGenerator, GLETrajectoryGenerator, MinJerkTrajectoryGenerator
 import structlog
 
+
 _log: structlog.BoundLogger = structlog.get_logger("[pfc_planner.train_traj_gen]")
+
+
+def plot_trajectory(true_traj: np.ndarray, pred_traj: np.ndarray, start_deg: float,
+                    final_deg: float, generator_type: str, save_path: Path):
+    """Plot predicted vs ground-truth trajectory and save to save_path."""
+    plt.figure(figsize=(10, 6))
+    plt.plot(np.rad2deg(true_traj), label='Min-Jerk (Ground Truth)', color='blue')
+    plt.plot(np.rad2deg(pred_traj), label=f'{generator_type.upper()} Prediction', color='red', linestyle='--')
+    plt.axhline(y=start_deg, color='green', linestyle=':', alpha=0.5, label='Start Angle')
+    plt.axhline(y=final_deg, color='purple', linestyle=':', alpha=0.5, label='Final Angle')
+    plt.xlabel('Time Step')
+    plt.ylabel('Angle (deg)')
+    plt.title(f'Trajectory Comparison ({generator_type.upper()}): {start_deg:.1f}° → {final_deg:.1f}°')
+    plt.legend()
+    plt.grid(True)
+    plt.savefig(save_path)
+    plt.close()
 
 
 class TrajectoryDataset(Dataset):
@@ -221,19 +239,8 @@ def train_trajectory_generator(
             mae = np.mean(np.abs(pred_traj - true_traj))
             _log.warning(f"Test {i+1}: {start_deg}° → {final_deg}° | MAE: {np.rad2deg(mae):.4f}°")
 
-            # Plot comparison
-            plt.figure(figsize=(10, 6))
-            plt.plot(np.rad2deg(true_traj), label='Min-Jerk (Ground Truth)', color='blue')
-            plt.plot(np.rad2deg(pred_traj), label=f'{generator_type.upper()} Prediction', color='red', linestyle='--')
-            plt.axhline(y=start_deg, color='green', linestyle=':', alpha=0.5, label='Start Angle')
-            plt.axhline(y=final_deg, color='purple', linestyle=':', alpha=0.5, label='Final Angle')
-            plt.xlabel('Time Step')
-            plt.ylabel('Angle (deg)')
-            plt.title(f'Trajectory Comparison ({generator_type.upper()}): {start_deg}° → {final_deg}°')
-            plt.legend()
-            plt.grid(True)
-            plt.savefig(results_dir / f'traj_gen_{generator_type}_test_{i+1}.png')
-            plt.close()
+            plot_trajectory(true_traj, pred_traj, start_deg, final_deg, generator_type,
+                            results_dir / f'traj_gen_{generator_type}_test_{i+1}.png')
 
     _log.warning(f"Test plots saved to {results_dir}")
 

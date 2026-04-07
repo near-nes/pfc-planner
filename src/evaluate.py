@@ -7,6 +7,8 @@ import numpy as np
 from .config import default_params
 from .dataset import RobotArmDataset
 from .factory import get_planner
+from .train_trajectory import plot_trajectory
+from .trajectory_generators import MinJerkTrajectoryGenerator
 from .training import get_project_root
 
 
@@ -45,6 +47,10 @@ def main():
     # Performance metrics
     metrics = {"choice": 0, "start": 0, "final": 0}
     history = {"true_start": [], "pred_start": [], "true_final": [], "pred_final": []}
+    traj_mae_true_angles = []   # traj-gen quality in isolation (true angles → traj vs minjerk true)
+    traj_mae_pred_angles = []   # end-to-end error (pred angles → traj vs minjerk true)
+
+    minjerk = MinJerkTrajectoryGenerator(params)
 
     for item in eval_dataset.task_data:
         image_path = Path(item['image_path'])
@@ -67,12 +73,26 @@ def main():
         if np.isclose(pred_start_rad, true_start_rad, atol=np.deg2rad(5.0)): metrics["start"] += 1
         if np.isclose(pred_final_rad, true_final_rad, atol=np.deg2rad(5.0)): metrics["final"] += 1
 
+        # Trajectory MAE metrics
+        ref_traj = minjerk.angles_to_trajectory(true_start_rad, true_final_rad)
+        traj_from_true = planner.trajectory_generator.angles_to_trajectory(true_start_rad, true_final_rad)
+        traj_from_pred = planner.trajectory_generator.angles_to_trajectory(pred_start_rad, pred_final_rad)
+        traj_mae_true_angles.append(np.mean(np.abs(np.rad2deg(traj_from_true) - np.rad2deg(ref_traj))))
+        traj_mae_pred_angles.append(np.mean(np.abs(np.rad2deg(traj_from_pred) - np.rad2deg(ref_traj))))
+
+        if args.plot_trajectories:
+            sample_id = Path(image_path).stem
+            plot_trajectory(ref_traj, traj_from_pred, item['initial_angle_deg'], item['final_angle_deg'],
+                            args.traj_gen, RESULTS_DIR / f'eval_traj_{sample_id}.png')
+
     # Print results summary
     n = len(eval_dataset)
-    print(f"\n--- Evaluation Results ({args.model.upper()} Vision + {args.traj_gen.upper()} Trajectory) ---")
-    print(f"Choice Accuracy: {(metrics['choice']/n)*100:.2f}%")
-    print(f"Start Angle Accuracy (±5°): {(metrics['start']/n)*100:.2f}%")
-    print(f"Final Angle Accuracy (±5°): {(metrics['final']/n)*100:.2f}%")
+    print(f"\n--- Evaluation Results ({args.model.upper()} Vision Model, {args.traj_gen.upper()} Trajectory Generator) ---")
+    print(f"[Vision]   Target Choice Accuracy:          {(metrics['choice']/n)*100:.2f}%")
+    print(f"[Vision]   Start Angle Accuracy (±5°):      {(metrics['start']/n)*100:.2f}%")
+    print(f"[Vision]   Final Angle Accuracy (±5°):      {(metrics['final']/n)*100:.2f}%")
+    print(f"[Traj Gen] MAE vs min-jerk (true angles):   {np.mean(traj_mae_true_angles):.4f}°")
+    print(f"[Traj Gen] MAE vs min-jerk (pred angles):   {np.mean(traj_mae_pred_angles):.4f}°")
 
 if __name__ == '__main__':
     main()
