@@ -108,7 +108,7 @@ def train_vision_network(params: PlannerParams, project_root: Path = None, model
         loss_history.append(epoch_loss)
 
         if (epoch + 1) % 10 == 0:
-            _log.info(f"Epoch {epoch+1}/{params.num_epochs} | Total Loss: {epoch_loss:.6f}")
+            _log.info(f"Epoch {epoch+1}/{params.num_epochs} | Total Loss: {epoch_loss:.6f} | Angle Loss: {angle_loss.item():.6f} | Choice Loss: {choice_loss.item():.6f}")
 
     # Persistence
     model_save_path = MODELS_DIR / f"trained_{params.model_type}_planner.pth"

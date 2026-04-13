@@ -44,6 +44,9 @@ def main():
 
     print(f"Evaluating {len(eval_dataset)} samples...")
 
+    # Tolerance for angle accuracy checks
+    ANGLE_TOLERANCE_DEG = 1.0
+
     # Performance metrics
     metrics = {"choice": 0, "start": 0, "final": 0}
     history = {"true_start": [], "pred_start": [], "true_final": [], "pred_final": []}
@@ -70,8 +73,8 @@ def main():
 
         # Check accuracies (±5 degrees tolerance for angles)
         if pred_choice == item['target_choice']: metrics["choice"] += 1
-        if np.isclose(pred_start_rad, true_start_rad, atol=np.deg2rad(5.0)): metrics["start"] += 1
-        if np.isclose(pred_final_rad, true_final_rad, atol=np.deg2rad(5.0)): metrics["final"] += 1
+        if np.isclose(pred_start_rad, true_start_rad, atol=np.deg2rad(ANGLE_TOLERANCE_DEG)): metrics["start"] += 1
+        if np.isclose(pred_final_rad, true_final_rad, atol=np.deg2rad(ANGLE_TOLERANCE_DEG)): metrics["final"] += 1
 
         # Trajectory MAE metrics
         ref_traj = minjerk.angles_to_trajectory(true_start_rad, true_final_rad)
@@ -89,8 +92,8 @@ def main():
     n = len(eval_dataset)
     print(f"\n--- Evaluation Results ({args.model.upper()} Vision Model, {args.traj_gen.upper()} Trajectory Generator) ---")
     print(f"[Vision]   Target Choice Accuracy:          {(metrics['choice']/n)*100:.2f}%")
-    print(f"[Vision]   Start Angle Accuracy (±5°):      {(metrics['start']/n)*100:.2f}%")
-    print(f"[Vision]   Final Angle Accuracy (±5°):      {(metrics['final']/n)*100:.2f}%")
+    print(f"[Vision]   Start Angle Accuracy (±{ANGLE_TOLERANCE_DEG}°):      {(metrics['start']/n)*100:.2f}%")
+    print(f"[Vision]   Final Angle Accuracy (±{ANGLE_TOLERANCE_DEG}°):      {(metrics['final']/n)*100:.2f}%")
     print(f"[Traj Gen] MAE vs min-jerk (true angles):   {np.mean(traj_mae_true_angles):.4f}°")
     print(f"[Traj Gen] MAE vs min-jerk (pred angles):   {np.mean(traj_mae_pred_angles):.4f}°")
 
