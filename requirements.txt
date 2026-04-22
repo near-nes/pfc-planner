@@ -1,6 +1,6 @@
 jupyter
 matplotlib
-minjerk-dynamics @ git+https://github.com/near-nes/controller.git#subdirectory=complete_control/shared/minjerk
+minjerk-dynamics
 numpy
 Pillow
 torch
