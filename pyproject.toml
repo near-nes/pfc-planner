@@ -9,11 +9,16 @@ description = "Prefrontal cortex trajectory planner with GLE"
 requires-python = ">=3.10"
 dependencies = [
     "torch",
+    "torchvision",
     "numpy",
     "structlog",
     "Pillow",
     "minjerk-dynamics",
+    "matplotlib",
 ]
+
+[project.optional-dependencies]
+notebook = ["jupyterlab"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
