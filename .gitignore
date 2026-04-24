@@ -3,3 +3,4 @@ data
 models
 results
 **/.ipynb_*
+*.egg-info/

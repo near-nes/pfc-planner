@@ -23,25 +23,32 @@ First, generate the required image dataset:
 python imagedata_gen.py
 ```
 
-Then train the GLEPlanner:
+Then train the GLEPlanner components (vision network and trajectory generator):
 ```bash
-python -m src.training
+python -m pfc_planner.train_vision --type gle
+python -m pfc_planner.train_trajectory --type gle
 ```
 
 To test the pretrained and saved GLEPlanner model:
 ```bash
-python -m src.evaluate
+python -m pfc_planner.evaluate --model gle --traj-gen gle
 ```
 
 ### Locally
 The code can also be run outside of the docker container.
 
-Install requirements locally in a virtual environment and activate it:
+Install the package in a virtual environment and activate it:
 
 ```bash
 uv venv
-uv pip install -r requirements.txt
+uv pip install -e .
 source .venv/bin/activate
+```
+
+If you want to run the included notebook (`planner_demo.ipynb`), install with the `notebook` extra:
+
+```bash
+uv pip install -e ".[notebook]"
 ```
 
 Generate the required image dataset:
@@ -49,12 +56,13 @@ Generate the required image dataset:
 python imagedata_gen.py
 ```
 
-Then train the GLEPlanner:
+Then train the GLEPlanner components (vision network and trajectory generator):
 ```bash
-python -m src.training
+python -m pfc_planner.train_vision --type gle
+python -m pfc_planner.train_trajectory --type gle
 ```
 
 To test the pretrained and saved GLEPlanner model:
 ```bash
-python -m src.evaluate
+python -m pfc_planner.evaluate --model gle --traj-gen gle
 ```
