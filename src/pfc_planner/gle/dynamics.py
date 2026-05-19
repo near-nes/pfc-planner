@@ -140,25 +140,25 @@ class GLEDynamics():
         return inst_s
 
     def _detach_dynamic_variables(self):
-        self.u = self.u.detach().clone()
-        self.v = self.v.detach().clone()
-        self.r = self.r.detach().clone()
-        self.r_prime = self.r_prime.detach().clone()
-        self.e_bottom = self.e_bottom.detach().clone()
+        self.u = self.u.detach()
+        self.v = self.v.detach()
+        self.r = self.r.detach()
+        self.r_prime = self.r_prime.detach()
+        self.e_bottom = self.e_bottom.detach()
 
     def update_dynamic_variables(self):
         if self.use_autodiff:  # retain graph
-            self.u = self.next_u.clone()
-            self.v = self.next_v.clone()
-            self.r = self.next_r.clone()
-            self.r_prime = self.next_r_prime.clone()
-            self.e_bottom = self.next_e_bottom.clone()
+            self.u = self.next_u
+            self.v = self.next_v
+            self.r = self.next_r
+            self.r_prime = self.next_r_prime
+            self.e_bottom = self.next_e_bottom
         else:
-            self.u = self.next_u.detach().clone()
-            self.v = self.next_v.detach().clone()
-            self.r = self.next_r.detach().clone()
-            self.r_prime = self.next_r_prime.detach().clone()
-            self.e_bottom = self.next_e_bottom.detach().clone()
+            self.u = self.next_u.detach()
+            self.v = self.next_v.detach()
+            self.r = self.next_r.detach()
+            self.r_prime = self.next_r_prime.detach()
+            self.e_bottom = self.next_e_bottom.detach()
 
     def named_dynamic_parameters(self, prefix='', recurse=True):
         for name, param in self._parameters.items():
@@ -237,9 +237,9 @@ class GLEDynamics():
             e_bottom = self.conn.compute_error(prosp_v)
 
         # for logging only
-        self.prosp_u = prosp_u.clone().detach()
-        self.prosp_v = prosp_v.clone().detach()
-        self.inst_e = inst_e.clone().detach()
+        self.prosp_u = prosp_u.detach()
+        self.prosp_v = prosp_v.detach()
+        self.inst_e = inst_e.detach()
 
         # compute firing rate and derivative
         r, r_prime = self.phi(prosp_u), self.phi_prime(prosp_u)

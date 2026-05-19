@@ -95,8 +95,9 @@ def train_vision_network(params: PlannerParams, project_root: Path = None, model
                 optimizer.step()
             else:
                 target = torch.cat((true_angles, torch.nn.functional.one_hot(target_choice_idx, params.num_choices).float()), dim=1)
-                for _ in range(params.gle_update_steps):
-                    output = vision_net(images, target, beta=params.gle_beta)
+                with torch.no_grad():
+                    for _ in range(params.gle_update_steps):
+                        output = vision_net(images, target, beta=params.gle_beta)
                 optimizer.step()
                 angle_loss = criterion_angles(output[:, :params.num_angle_outputs], true_angles)
                 choice_loss = criterion_choice(output[:, params.num_angle_outputs:], target_choice_idx)
