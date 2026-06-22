@@ -8,6 +8,8 @@ This script trains a ANN or GLE network to learn the mapping from
 
 import argparse
 from pathlib import Path
+import json
+from dataclasses import asdict
 
 import numpy as np
 import torch
@@ -198,8 +200,11 @@ def train_trajectory_generator(
 
     # Save model
     model_path = model_dir / f"trained_{generator_type}_trajectory_generator.pth"
+    config_path = model_dir / f"trained_{generator_type}_planner.json"
     traj_gen.save_model(model_path)
-    _log.warning(f"Model saved to {model_path}")
+    with open(config_path, "w") as f:
+        json.dump(asdict(params), f, indent=4)
+    _log.warning(f"Model and configuration saved to {model_dir}")
 
     # Plot training loss
     plt.figure(figsize=(10, 6))
