@@ -62,6 +62,7 @@ def get_planner(
     traj_model_path = None
     if traj_gen_type in ["ann", "gle"]:
         traj_model_path = model_dir / f"trained_{traj_gen_type}_trajectory_generator.pth"
+        traj_config_path = model_dir / f"trained_{traj_gen_type}_planner.json"
         traj_values_to_check = [
             "time_prep",
             "time_move",
@@ -71,7 +72,7 @@ def get_planner(
             "resolution",
         ]
         if skip_cache or not _is_model_valid(
-            params, traj_model_path, vision_config_path, traj_values_to_check
+            params, traj_model_path, traj_config_path, traj_values_to_check
         ):
             _log.warning("Trajectory generator model missing, starting training...", type=traj_gen_type)
             train_trajectory_generator(params, generator_type=traj_gen_type, project_root=project_root, model_dir=model_dir)
