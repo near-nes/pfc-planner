@@ -45,7 +45,15 @@ def get_planner(
     vision_model_path = model_dir / f"trained_{params.model_type}_planner.pth"
     vision_config_path = model_dir / f"trained_{params.model_type}_planner.json"
 
-    if skip_cache or not _is_vision_model_valid(params, vision_model_path, vision_config_path):
+    vision_values_to_check = [
+        "model_type",
+        "image_size",
+        "num_choices",
+        "num_angle_outputs",
+    ]
+    if skip_cache or not _is_model_valid(
+        params, vision_model_path, vision_config_path, vision_values_to_check
+    ):
         _log.warning("Vision model missing or invalid, starting training...", model_type=params.model_type)
         train_vision_network(params, project_root, model_dir)
 
@@ -54,7 +62,18 @@ def get_planner(
     traj_model_path = None
     if traj_gen_type in ["ann", "gle"]:
         traj_model_path = model_dir / f"trained_{traj_gen_type}_trajectory_generator.pth"
-        if skip_cache or not traj_model_path.exists():
+        traj_config_path = model_dir / f"trained_{traj_gen_type}_planner.json"
+        traj_values_to_check = [
+            "time_prep",
+            "time_move",
+            "time_locked_with_feedback",
+            "time_grasp",
+            "time_post",
+            "resolution",
+        ]
+        if skip_cache or not _is_model_valid(
+            params, traj_model_path, traj_config_path, traj_values_to_check
+        ):
             _log.warning("Trajectory generator model missing, starting training...", type=traj_gen_type)
             train_trajectory_generator(params, generator_type=traj_gen_type, project_root=project_root, model_dir=model_dir)
 
@@ -62,7 +81,12 @@ def get_planner(
     return _assemble_planner(params, vision_model_path, traj_model_path)
 
 
-def _is_vision_model_valid(params: PlannerParams, model_path: Path, config_path: Path) -> bool:
+def _is_model_valid(
+    params: PlannerParams,
+    model_path: Path,
+    config_path: Path,
+    values_to_check: list[str],
+) -> bool:
     """Check if the existing vision model matches requested parameters."""
     if not (model_path.exists() and config_path.exists()):
         return False
@@ -73,10 +97,11 @@ def _is_vision_model_valid(params: PlannerParams, model_path: Path, config_path:
 
         requested = asdict(params)
         # Check critical parameters that would require a different architecture
-        for k in ["model_type", "image_size", "num_choices", "num_angle_outputs"]:
+        for k in values_to_check:
             val = requested.get(k)
             # Normalize tuples (from dataclass) to lists (from JSON)
-            if isinstance(val, tuple): val = list(val)
+            if isinstance(val, tuple):
+                val = list(val)
             if val != saved.get(k):
                 _log.debug(f"Parameter mismatch for {k}: {val} vs {saved.get(k)}")
                 return False
